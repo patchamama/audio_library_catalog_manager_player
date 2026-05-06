@@ -1,0 +1,28 @@
+---
+import Layout from "../layouts/Layout.astro"
+import { playlists, songs } from "@/lib/data"
+import { AlbumBrowser } from "@/components/AlbumBrowser"
+import Greeting from "@/components/Greeting.svelte"
+const BASE = import.meta.env.BASE_URL.endsWith("/") ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`
+---
+
+<Layout title="Spotify Clone">
+  <div
+    id="playlist-container"
+    class="relative transition-all duration-1000 bg-green-600"
+  >
+    <!-- <PageHeader /> -->
+
+    <div class="relative z-10 px-0 md:px-6 pt-10">
+      <Greeting />
+      <AlbumBrowser playlists={playlists} songs={songs} baseUrl={BASE} client:load />
+
+      <div
+        class="absolute inset-0 bg-gradient-to-t from-zinc-900 via-zinc-900/80 -z-[1]"
+      >
+      </div>
+    </div>
+
+    <style></style>
+  </div>
+</Layout>

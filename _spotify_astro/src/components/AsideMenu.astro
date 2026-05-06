@@ -1,0 +1,38 @@
+---
+import LibraryIcon from "@/icons/Library.astro"
+import HomeIcon from "@/icons/Home.astro"
+import SearchIcon from "@/icons/Search.astro"
+import SideMenuItem from "./SideMenuItem.astro"
+import { SidebarLibrary } from "./SidebarLibrary";
+import { QueuePanel } from "./QueuePanel";
+
+import { playlists } from "@/lib/data"
+const BASE = import.meta.env.BASE_URL.endsWith("/") ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`
+---
+
+<nav class="flex flex-col flex-1 gap-2">
+  <div class="bg-zinc-900 rounded-lg p-2">
+    <ul>
+      <SideMenuItem href={BASE}>
+        <HomeIcon />
+         Inicio
+      </SideMenuItem>
+
+      <SideMenuItem href={`${BASE}#`}>
+        <SearchIcon />
+         Buscar
+      </SideMenuItem>
+    </ul>
+  </div>
+
+  <div class="bg-zinc-900 rounded-lg p-2 flex-1">
+    <ul>
+      <SideMenuItem href={BASE}>
+        <LibraryIcon />
+         Tu biblioteca
+      </SideMenuItem>
+    </ul>
+    <SidebarLibrary playlists={playlists} baseUrl={BASE} client:load />
+    <QueuePanel client:load />
+  </div>
+</nav>

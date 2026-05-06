@@ -1,0 +1,38 @@
+---
+import type { Playlist } from "@/lib/types"
+
+interface Props {
+  playlist: Playlist
+}
+
+const { playlist } = Astro.props
+const { id, cover, title, artists, color } = playlist
+const BASE = import.meta.env.BASE_URL.endsWith("/") ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`
+
+const artistsString = artists.join(", ")
+---
+
+<a
+  href={`${BASE}playlist/${id}/`}
+  class="playlist-item flex relative p-2 overflow-hidden items-center gap-5 rounded-md hover:bg-zinc-800"
+>
+  <picture class="h-12 w-12 flex-none">
+    <img
+      src={cover}
+      alt={`Cover of ${title} by ${artistsString}`}
+      class="object-cover w-full h-full rounded-md"
+      loading="lazy"
+      onerror={`this.onerror=null;this.src='${BASE}default-cover.svg';`}
+    />
+  </picture>
+
+  <div class="flex flex-auto flex-col truncate">
+    <h4 class="text-white text-sm">
+      {title}
+    </h4>
+
+    <span class="text-xs text-gray-400">
+      {artistsString}
+    </span>
+  </div>
+</a>

@@ -1,0 +1,7 @@
+<a href="Tabla.pgn">Descargar PGN!</a>
+
+http://www.ajedrezdeataque.com/04%20Articulos/00%20Otros%20articulos/Literatura/Tabla/Extendida.htm
+
+<iframe width="560" height="315" src="https://www.youtube.com/embed/dsZIKJ9cmvw" frameborder="0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+<h3>La película</h3>
+<video id="myvid1" src="La Tabla de Flandes.mp4" controls />

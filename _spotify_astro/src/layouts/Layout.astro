@@ -1,0 +1,250 @@
+---
+import { Player } from "@/components/Player"
+import AsideMenu from "../components/AsideMenu.astro"
+import { ViewTransitions } from "astro:transitions";
+
+interface Props {
+  title: string
+}
+
+const { title } = Astro.props
+const BASE = import.meta.env.BASE_URL.endsWith("/") ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`
+const ASSET_VERSION = "20260506-1";
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="description" content="Astro description" />
+    <meta name="viewport" content="width=device-width" />
+    <link rel="icon" type="image/svg+xml" href={`${BASE}favicon.svg?v=${ASSET_VERSION}`} />
+    <ViewTransitions fallback="swap" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{title}</title>
+  </head>
+  <body>
+    <div id="app" class="relative h-screen p-2 gap-2">
+      <div id="route-spin" class="route-spin hidden" aria-hidden="true">
+        <div class="route-spin-ring"></div>
+      </div>
+      <aside class="[grid-area:aside] flex-col hidden md:flex overflow-y-auto">
+        <AsideMenu />
+      </aside>
+
+      <main
+        class="[grid-area:main] rounded-lg bg-zinc-900 overflow-y-auto w-full"
+      >
+        <slot />
+      </main>
+
+      <footer class="[grid-area:player] h-[72px] mobile-player" transition:name="media-player" transition:persist>
+        <Player client:load />
+      </footer>
+
+      <nav class="mobile-nav md:hidden">
+        <a href="#home" data-mobile-section="home" class="mobile-nav-item"><span class="mobile-nav-ico">⌂</span><span>Inicio</span></a>
+        <a href="#search" data-mobile-section="search" class="mobile-nav-item"><span class="mobile-nav-ico">⌕</span><span>Buscar</span></a>
+        <a href="#library" data-mobile-section="library" class="mobile-nav-item"><span class="mobile-nav-ico">☰</span><span>Biblioteca</span></a>
+        <a href="#queue" data-mobile-section="queue" class="mobile-nav-item"><span class="mobile-nav-ico">＋</span><span>Cola</span></a>
+      </nav>
+    </div>
+    <script is:inline>
+      (() => {
+        const spin = document.getElementById("route-spin");
+        const show = () => spin?.classList.remove("hidden");
+        const hide = () => spin?.classList.add("hidden");
+        window.addEventListener("pageshow", hide);
+        document.addEventListener("astro:page-load", hide);
+        document.addEventListener("click", (e) => {
+          const target = e.target;
+          if (!(target instanceof Element)) return;
+          const link = target.closest("a");
+          if (!link) return;
+          const mobileSection = link.getAttribute("data-mobile-section");
+          if (mobileSection) {
+            e.preventDefault();
+            show();
+            if (window.location.pathname.includes('/playlist/')) {
+              const home = window.location.pathname.replace(/\/playlist\/[^/]+\/?$/, '/');
+              window.location.href = home + '#' + mobileSection;
+            } else {
+              window.location.hash = mobileSection;
+              document.dispatchEvent(new CustomEvent("mobile-nav-select", { detail: { section: mobileSection } }));
+              window.setTimeout(hide, 700);
+            }
+            return;
+          }
+          const href = link.getAttribute("href") || "";
+          if (href.includes("#home") || href.includes("#search") || href.includes("#library") || href.includes("#queue") || href.includes("/playlist/")) {
+            show();
+            if (href.includes("#home") || href.includes("#search") || href.includes("#library") || href.includes("#queue")) {
+              window.setTimeout(hide, 900);
+            }
+          }
+        });
+      })();
+    </script>
+    <style>
+      #app {
+        display: grid;
+        grid-template-areas:
+          "aside main"
+          "player player";
+        grid-template-columns: 350px 1fr;
+        grid-template-rows: 1fr auto;
+      }
+
+      @media (max-width: 767px) {
+        #app {
+          display: block;
+          padding: 0;
+          height: 100dvh;
+          overflow: hidden;
+        }
+
+        main[class*="[grid-area:main]"] {
+          height: calc(100dvh - 72px - 56px);
+          border-radius: 0;
+          padding-bottom: 10px;
+        }
+
+        .mobile-player {
+          position: fixed;
+          left: 0;
+          right: 0;
+          bottom: 56px;
+          height: 72px;
+          z-index: 80;
+          background: #0b0b0b;
+          border-top: 1px solid #1f1f1f;
+        }
+
+        .mobile-nav {
+          position: fixed;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          height: 56px;
+          z-index: 90;
+          display: grid;
+          grid-template-columns: 1fr 1fr 1fr 1fr;
+          background: #090909;
+          border-top: 1px solid #222;
+        }
+
+        .mobile-nav-item {
+          display: grid;
+          place-content: center;
+          gap: 2px;
+          color: #d4d4d8;
+          font-size: 11px;
+          text-decoration: none;
+          justify-items: center;
+          align-items: center;
+        }
+
+        .mobile-nav-ico {
+          font-size: 32px;
+          line-height: 1;
+        }
+      }
+
+      .route-spin {
+        position: fixed;
+        inset: 0;
+        z-index: 1200;
+        display: grid;
+        place-content: center;
+        background: rgba(0, 0, 0, 0.65);
+      }
+
+      .route-spin.hidden {
+        display: none;
+      }
+
+      .route-spin-ring {
+        width: 96px;
+        height: 96px;
+        border-radius: 9999px;
+        border: 8px solid #3f3f46;
+        border-top-color: #22c55e;
+        animation: routeSpin 1s linear infinite;
+      }
+
+      @keyframes routeSpin {
+        to { transform: rotate(360deg); }
+      }
+    </style>
+
+    <style is:global>
+      html {
+        font-family: "CircularStd", system-ui, sans-serif;
+        background: #010101;
+        color: white;
+      }
+      * {
+        scrollbar-width: none;
+      }
+      *::-webkit-scrollbar {
+        width: 0;
+        height: 0;
+      }
+
+      .mobile-marquee {
+        display: inline-block;
+        animation: mobileMarquee 9s ease-in-out infinite alternate;
+        will-change: transform;
+      }
+
+      @keyframes mobileMarquee {
+        0% {
+          transform: translateX(0);
+        }
+        100% {
+          transform: translateX(-38%);
+        }
+      }
+
+      @font-face {
+        font-family: "CircularStd";
+        src: url("/fonts/CircularStd-Medium.woff2?v=20260506-1") format("woff2");
+        font-weight: 500;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: "CircularStd";
+        src: url("/fonts/CircularStd-Book.woff2?v=20260506-1") format("woff2");
+        font-weight: 400;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: "CircularStd";
+        src: url("/fonts/CircularStd-Light.woff2?v=20260506-1") format("woff2");
+        font-weight: 300;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: "CircularStd";
+        src: url("/fonts/CircularStd-Bold.woff2?v=20260506-1") format("woff2");
+        font-weight: 700;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: "CircularStd";
+        src: url("/fonts/CircularStd-Black.woff2?v=20260506-1") format("woff2");
+        font-weight: 900;
+        font-style: normal;
+        font-display: swap;
+      }
+    </style>
+  </body>
+</html>

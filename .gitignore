@@ -1,0 +1,39 @@
+# Ignore everything
+*
+
+# Allow code and config files in root
+!*.php
+!*.js
+!*.css
+!.htaccess
+!app.sqlite
+!info.txt
+!*.sh
+!*.bat
+!CLAUDE.md
+!GEMINI.md
+!.gitignore
+
+# Allow project directories
+!_spotify_astro/
+!_getid3/
+
+# Recursively allow contents of _spotify_astro
+!_spotify_astro/**
+
+# Ignore common junk and build artifacts
+node_modules/
+.astro/
+dist/
+.idea/
+.vscode/
+.DS_Store
+*.mp3
+*.pdf
+*.zip
+*.exe
+*.jpg
+*.png
+*.sh.bak
+
+# Re-ignore everything inside audiobook folders if needed, but the * above handles it.

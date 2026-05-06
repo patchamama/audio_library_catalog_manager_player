@@ -1,0 +1,55 @@
+
+h1 { font-size: 14pt;   }
+h2 { font-size: 12pt;  font-style: italic; }
+body { max-width: 600px; font-family: Verdana, Tahoma, Arial, sans-serif; font-size: 12pt; background: #fff }
+table, tr, td { font-family: Verdana, Tahoma, Arial, sans-serif;   }
+a:link, a:visited, a:active { text-decoration: none;   }
+a {
+    text-decoration: none;  
+    font-weight: bold;            
+}
+a:hover { text-decoration: none; }
+.title { font-weight: bold; padding: 7px; margin: 0px;  }
+.odd { background-color: #ccc; }
+audio {
+		width: 80%;
+	}
+img {
+	width: 80%;
+}
+
+@media only screen and (max-width : 1400px) {
+	body { 
+		font-size: 20pt;
+		max-width: 1400px;
+	}
+	h1 { font-size: 24pt;}
+	h2 { font-size: 22pt; }
+}
+
+@media only screen and (max-width : 1200px) {
+	body { 
+		font-size: 40pt;
+		max-width: 1200px;
+	}
+	h1 { font-size: 44pt;}
+	h2 { font-size: 42pt; }
+}
+
+@media only screen and (max-width : 800px) {
+	body { 
+		font-size: 20pt;
+		max-width: 800px;
+	}
+	h1 { font-size: 24pt;}
+	h2 { font-size: 22pt; }
+}
+
+@media only screen and (max-width : 600px) {
+	body { 
+		font-size: 10pt;
+		max-width: 600px;
+	}
+	h1 { font-size: 14pt;}
+	h2 { font-size: 12pt; }
+}
