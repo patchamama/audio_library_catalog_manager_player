@@ -30,14 +30,12 @@ const setNewCurrentMusic = (
 }
 
 export const MusicsTablePlay = ({song, isCurrentSong}: Props) => {
-  const {
-    currentMusic,
-    isPlaying,
-    setIsPlaying,
-    setCurrentMusic,
-    setTrackLoading,
-    setMobilePlayerVisible
-  } = usePlayerStore(state => state)
+  const currentMusic = usePlayerStore(state => state.currentMusic);
+  const isPlaying = usePlayerStore(state => state.isPlaying);
+  const setIsPlaying = usePlayerStore(state => state.setIsPlaying);
+  const setCurrentMusic = usePlayerStore(state => state.setCurrentMusic);
+  const setTrackLoading = usePlayerStore(state => state.setTrackLoading);
+  const setMobilePlayerVisible = usePlayerStore(state => state.setMobilePlayerVisible);
 
   const isCurrentSongRunning = (song: Song) => {
     return (currentMusic.song?.id == song.id)

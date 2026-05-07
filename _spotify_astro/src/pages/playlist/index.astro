@@ -1,13 +1,6 @@
 ---
 import Layout from "../../layouts/Layout.astro"
 import { PlaylistPage } from "@/components/PlaylistPage"
-import { allPlaylists } from "@/lib/data"
-
-export async function getStaticPaths() {
-  return allPlaylists.map((playlist) => ({
-    params: { id: String(playlist.id) },
-  }))
-}
 ---
 
 <Layout title="Player">

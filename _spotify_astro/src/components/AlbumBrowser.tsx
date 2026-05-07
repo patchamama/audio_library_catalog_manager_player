@@ -23,7 +23,19 @@ const sameArtists = (a: string[], b: string[]) => {
   return left.every((v, i) => v === right[i]);
 };
 
-export function AlbumBrowser({ playlists, songs, baseUrl }: Props) {
+export function AlbumBrowser({ playlists: initialPlaylists, songs: initialSongs, baseUrl }: Props) {
+  const [playlists, setPlaylists] = useState<Playlist[]>(initialPlaylists);
+  const [songs, setSongs] = useState<Song[]>(initialSongs);
+
+  useEffect(() => {
+    fetch('/_audios/api.php')
+      .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+      .then(data => {
+        if (Array.isArray(data.playlists) && data.playlists.length > 0) setPlaylists(data.playlists);
+        if (Array.isArray(data.songs) && data.songs.length > 0) setSongs(data.songs);
+      })
+      .catch(() => {});
+  }, []);
   const [albumInput, setAlbumInput] = useState("");
   const [contentInput, setContentInput] = useState("");
   const [mobileInput, setMobileInput] = useState("");
@@ -32,15 +44,42 @@ export function AlbumBrowser({ playlists, songs, baseUrl }: Props) {
   const [mobileQuery, setMobileQuery] = useState("");
   const [showSearchSpinner, setShowSearchSpinner] = useState(false);
   const [mobileSection, setMobileSection] = useState<"home" | "search" | "library" | "queue">("home");
-  const [isMobile, setIsMobile] = useState(false);
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(max-width: 767px)').matches : false
+  );
   const [navLoading, setNavLoading] = useState(false);
   const [visible, setVisible] = useState(PAGE_SIZE);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
-  const { queue, removeFromQueue, clearQueue, setCurrentMusic, setIsPlaying, currentMusic, addToQueue, setMobilePlayerVisible } = usePlayerStore((s) => s);
+  const mobileSentinelRef = useRef<HTMLDivElement | null>(null);
+  const currentMusic = usePlayerStore(state => state.currentMusic);
+  const isPlaying = usePlayerStore(state => state.isPlaying);
+  const queue = usePlayerStore(state => state.queue);
+  const setCurrentMusic = usePlayerStore(state => state.setCurrentMusic);
+  const setIsPlaying = usePlayerStore(state => state.setIsPlaying);
+  const addToQueue = usePlayerStore(state => state.addToQueue);
+  const removeFromQueue = usePlayerStore(state => state.removeFromQueue);
+  const clearQueue = usePlayerStore(state => state.clearQueue);
+  const setMobilePlayerVisible = usePlayerStore(state => state.setMobilePlayerVisible);
   const queueSet = useMemo(() => new Set(queue.map((q) => `${q.albumId}-${q.id}-${q.url}`)), [queue]);
   const pendingDesktopSearch = albumInput !== albumQuery || contentInput !== contentQuery;
   const pendingMobileSearch = mobileInput !== mobileQuery;
   const hasPendingSearch = pendingDesktopSearch || pendingMobileSearch;
+
+  // Read ?filter= URL param on mount and pre-populate search
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const filter = params.get('filter');
+    if (!filter?.trim()) return;
+    setAlbumInput(filter);
+    setAlbumQuery(filter);
+    setContentInput(filter);
+    setContentQuery(filter);
+    if (window.matchMedia('(max-width: 767px)').matches) {
+      setMobileInput(filter);
+      setMobileQuery(filter);
+      setMobileSection('search');
+    }
+  }, []);
 
   useEffect(() => {
     const id = window.setTimeout(() => setAlbumQuery(albumInput), 2000);
@@ -177,17 +216,29 @@ export function AlbumBrowser({ playlists, songs, baseUrl }: Props) {
 
   useEffect(() => {
     setVisible(PAGE_SIZE);
-  }, [albumQuery, contentQuery]);
+  }, [albumQuery, contentQuery, isMobile]);
 
   useEffect(() => {
     if (!sentinelRef.current) return;
+    const scroller = sentinelRef.current.closest('main') as HTMLElement | null;
     const observer = new IntersectionObserver((entries) => {
       if (!entries[0].isIntersecting) return;
       setVisible((v) => Math.min(v + PAGE_SIZE, sourceLen));
-    }, { root: null, threshold: 0.1 });
+    }, { root: scroller, threshold: 0.1 });
     observer.observe(sentinelRef.current);
     return () => observer.disconnect();
   }, [sourceLen, mode]);
+
+  useEffect(() => {
+    if (!mobileSentinelRef.current) return;
+    const scroller = mobileSentinelRef.current.closest('main') as HTMLElement | null;
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries[0].isIntersecting) return;
+      setVisible((v) => Math.min(v + PAGE_SIZE, playlists.length));
+    }, { root: scroller, threshold: 0.1 });
+    observer.observe(mobileSentinelRef.current);
+    return () => observer.disconnect();
+  }, [playlists.length]);
 
   useEffect(() => {
     if (!navLoading) return;
@@ -207,12 +258,27 @@ export function AlbumBrowser({ playlists, songs, baseUrl }: Props) {
           <div id="home" className="px-3">
             <h2 className="text-xl font-semibold mb-4">Inicio</h2>
             <div className="grid grid-cols-2 gap-3">
-              {playlists.map((playlist) => (
-                <a key={playlist.id} href={`${baseUrl}playlist/${playlist.id}/`} className="rounded-lg bg-zinc-800/80 p-2.5" onClick={() => { setNavLoading(true); setMobilePlayerVisible(true); }}>
-                  <img src={playlist.cover} alt={playlist.title} className="w-full aspect-square object-cover rounded-md scale-[0.96]" loading="lazy" />
-                  <div className="mt-2 text-sm text-zinc-100 line-clamp-2">{playlist.title}</div>
-                </a>
-              ))}
+              {playlists.slice(0, visible).map((playlist) => {
+                const isCurrentAlbum = currentMusic?.playlist?.albumId === playlist.albumId;
+                return (
+                  <a key={playlist.id} href={`${baseUrl}playlist/${playlist.id}/`} className="rounded-lg bg-zinc-800/80 p-2.5" onClick={() => { setNavLoading(true); setMobilePlayerVisible(true); }}>
+                    <div className="relative">
+                      <img src={playlist.cover} alt={playlist.title} className="w-full aspect-square object-cover rounded-md scale-[0.96]" loading="lazy" />
+                      {isCurrentAlbum && (
+                        <div className="absolute inset-0 flex items-center justify-center rounded-md" style={{background:'rgba(0,0,0,0.32)'}}>
+                          <div className="w-10 h-10 rounded-full bg-green-500/90 flex items-center justify-center shadow-lg">
+                            <span className="text-white text-sm ml-0.5">{isPlaying ? '▶' : '⏸'}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <div className="mt-2 text-sm text-zinc-100 line-clamp-2">{playlist.title}</div>
+                  </a>
+                );
+              })}
+            </div>
+            <div ref={mobileSentinelRef} className="py-4 text-center text-xs text-zinc-500">
+              {visible < playlists.length ? "Cargando más..." : ""}
             </div>
           </div>
         )}

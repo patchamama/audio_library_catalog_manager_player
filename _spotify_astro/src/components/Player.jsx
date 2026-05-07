@@ -12,9 +12,18 @@ import { Slider } from "@/components/Slider";
 
 
 export function Player() {
-  const {currentMusic, isPlaying, volume, setCurrentMusic, setVolume, setIsPlaying, shiftQueue, isTrackLoading, setTrackLoading} = usePlayerStore(state => state);
+  const currentMusic = usePlayerStore(state => state.currentMusic);
+  const isPlaying = usePlayerStore(state => state.isPlaying);
+  const isTrackLoading = usePlayerStore(state => state.isTrackLoading);
+  const volume = usePlayerStore(state => state.volume);
+  const setCurrentMusic = usePlayerStore(state => state.setCurrentMusic);
+  const setVolume = usePlayerStore(state => state.setVolume);
+  const setIsPlaying = usePlayerStore(state => state.setIsPlaying);
+  const shiftQueue = usePlayerStore(state => state.shiftQueue);
+  const setTrackLoading = usePlayerStore(state => state.setTrackLoading);
   const audioRef = useRef();
   const videoRef = useRef();
+  const prevSongUrlRef = useRef(null);
   const {getNextSong} = useCurrentMusic(currentMusic)
   const [isLoading, setIsLoading] = useState(false);
   const [showVideoModal, setShowVideoModal] = useState(false);
@@ -27,6 +36,7 @@ export function Player() {
   const [playerUserId, setPlayerUserId] = useState(null);
   const [isMobile, setIsMobile] = useState(false);
   const [isLandscape, setIsLandscape] = useState(false);
+  const [showAlbumModal, setShowAlbumModal] = useState(false);
   const [mobileTime, setMobileTime] = useState(0);
   const splitRef = useRef(null);
   const aspectModes = [
@@ -150,39 +160,53 @@ export function Player() {
 
   useEffect(() => {
     const {song} = currentMusic;
-    if (song) {
-      setIsLoading(true);
-      setTrackLoading(true);
-      setShowVideoModal(song.mediaType === "video");
+    if (!song) return;
 
-      // Always stop both elements first to avoid overlapping playback
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
-      if (videoRef.current) {
-        videoRef.current.pause();
-      }
+    // Guard: same URL already loaded — Astro re-hydration or duplicate setCurrentMusic call.
+    // Skip to avoid resetting the audio element and interrupting playback.
+    if (song.url === prevSongUrlRef.current) return;
+    prevSongUrlRef.current = song.url;
 
-      const media = getMediaElement(song);
-      if (!media) return;
-      media.src = song.url;
-      media.volume = volume;
-      const raw = typeof window !== "undefined" ? localStorage.getItem("player:state") : null;
-      let timeToSet = 0;
-      if (raw) {
-        try {
-          const parsed = JSON.parse(raw);
-          if (parsed?.url === song.url && parsed?.time) {
-            timeToSet = Number(parsed.time) || 0;
-          }
-        } catch (_) {}
-      }
-      media.currentTime = timeToSet;
-      setPersistedState();
-      play();
+    setIsLoading(true);
+    setTrackLoading(true);
+    setShowVideoModal(song.mediaType === "video");
+
+    // Always stop both elements first to avoid overlapping playback
+    if (audioRef.current) {
+      audioRef.current.pause();
     }
+    if (videoRef.current) {
+      videoRef.current.pause();
+    }
+
+    const media = getMediaElement(song);
+    if (!media) return;
+    media.src = song.url;
+    media.volume = volume;
+    const raw = typeof window !== "undefined" ? localStorage.getItem("player:state") : null;
+    let timeToSet = 0;
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed?.url === song.url && parsed?.time) {
+          timeToSet = Number(parsed.time) || 0;
+        }
+      } catch (_) {}
+    }
+    media.currentTime = timeToSet;
+    setPersistedState();
+    play();
   }, [currentMusic])
 
+  // When the active album changes, tell the SW to cache only its cover + all its audio files
+  useEffect(() => {
+    if (!currentMusic.playlist?.albumId || !('serviceWorker' in navigator)) return;
+    const controller = navigator.serviceWorker.controller;
+    if (!controller) return;
+    const audioUrls = (currentMusic.songs ?? []).map(s => s.url).filter(Boolean);
+    const coverUrl = currentMusic.playlist.cover ?? null;
+    controller.postMessage({ type: 'SET_ALBUM_CACHE', audioUrls, coverUrl });
+  }, [currentMusic.playlist?.albumId]);
 
   const play = () => {
     const media = getMediaElement();
@@ -345,6 +369,53 @@ export function Player() {
         </div>
       </div>
     )}
+    {isMobile && showAlbumModal && currentMusic.playlist && currentMusic.songs.length > 0 && (
+      <div className="fixed inset-x-0 top-0 z-[48] bg-zinc-950 overflow-y-auto" style={{ bottom: '128px' }}>
+        <div className="sticky top-0 bg-zinc-950/95 backdrop-blur-sm px-4 py-3 flex items-center gap-3 border-b border-zinc-800">
+          <button type="button" className="text-zinc-400 hover:text-white text-lg leading-none" onClick={() => setShowAlbumModal(false)} aria-label="Cerrar">✕</button>
+          <h3 className="text-sm font-semibold truncate flex-1 text-zinc-100">{currentMusic.playlist.title}</h3>
+        </div>
+        <div className="flex items-center gap-4 px-4 py-4 border-b border-zinc-900">
+          <img src={currentMusic.playlist.cover} alt={currentMusic.playlist.title} className="w-20 h-20 rounded-md object-cover shadow-lg shrink-0" />
+          <div className="min-w-0">
+            <h2 className="text-base font-bold text-white truncate">{currentMusic.playlist.title}</h2>
+            <p className="text-xs text-zinc-400 truncate mt-0.5">{currentMusic.playlist.artists?.join(', ')}</p>
+            <p className="text-xs text-zinc-600 mt-1">{currentMusic.songs.length} pistas</p>
+          </div>
+        </div>
+        <div className="pb-2">
+          {currentMusic.songs.map((song, idx) => {
+            const isCurrent = song.url === currentMusic.song?.url;
+            return (
+              <button
+                key={song.url}
+                type="button"
+                className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${isCurrent ? 'bg-zinc-800' : 'active:bg-zinc-900'}`}
+                onClick={() => {
+                  setCurrentMusic({ ...currentMusic, song: normalizeSongMediaType(song) });
+                  setIsPlaying(true);
+                  setShowAlbumModal(false);
+                }}
+              >
+                <span className="text-xs text-zinc-600 w-4 shrink-0 text-right">{idx + 1}</span>
+                <div className="relative shrink-0">
+                  <img src={song.image} alt={song.title} className="w-10 h-10 rounded object-cover" />
+                  {isCurrent && (
+                    <div className="absolute inset-0 bg-black/40 rounded flex items-center justify-center">
+                      <span className="text-green-400 text-sm">{isPlaying ? '▶' : '⏸'}</span>
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className={`text-sm truncate ${isCurrent ? 'text-green-400 font-medium' : 'text-zinc-200'}`}>{song.title}</div>
+                  <div className="text-xs text-zinc-500 truncate">{song.artists?.join(', ')}</div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    )}
     <div className="relative grid grid-cols-1 md:grid-cols-[280px_1fr_220px] items-center w-full px-2 gap-1 md:gap-4 z-50 h-full">
       {isMobile && (
         <div className="w-full px-1">
@@ -367,11 +438,18 @@ export function Player() {
             />
           </div>
           <div className="mt-2 flex items-center gap-2">
-            <img
-              src={currentMusic.song?.image || "/_audios/player/default-cover.svg"}
-              alt={currentMusic.song?.title || "cover"}
-              className="w-10 h-10 rounded object-cover shrink-0"
-            />
+            <button
+              type="button"
+              className="shrink-0"
+              onClick={() => { if (currentMusic.songs.length > 0) setShowAlbumModal(v => !v); }}
+              aria-label={showAlbumModal ? "Cerrar lista del álbum" : "Ver lista del álbum"}
+            >
+              <img
+                src={currentMusic.song?.image || "/_audios/player/default-cover.svg"}
+                alt={currentMusic.song?.title || "cover"}
+                className={`w-10 h-10 rounded object-cover ${showAlbumModal ? 'ring-2 ring-green-400' : ''}`}
+              />
+            </button>
             <div className="min-w-0 flex-1 overflow-hidden">
               <div className="mobile-marquee text-xs text-zinc-200 whitespace-nowrap">
                 {(currentMusic.song?.title || "Sin reproducción")} · {(currentMusic.song?.artists?.join(", ") || "Sin autor")}

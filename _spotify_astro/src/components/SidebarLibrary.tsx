@@ -2,14 +2,24 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Playlist } from "@/lib/types";
 
 interface Props {
-  playlists: Playlist[];
+  playlists?: Playlist[];
   baseUrl: string;
 }
 
 const PAGE_SIZE = 120;
 
-export function SidebarLibrary({ playlists, baseUrl }: Props) {
+export function SidebarLibrary({ playlists: initialPlaylists = [], baseUrl }: Props) {
+  const [playlists, setPlaylists] = useState<Playlist[]>(initialPlaylists);
   const [visible, setVisible] = useState(PAGE_SIZE);
+
+  useEffect(() => {
+    fetch('/_audios/api.php')
+      .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+      .then(data => {
+        if (Array.isArray(data.playlists) && data.playlists.length > 0) setPlaylists(data.playlists);
+      })
+      .catch(() => {});
+  }, []);
   const [activeId, setActiveId] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);

@@ -19,6 +19,12 @@ const ASSET_VERSION = "20260506-1";
     <meta name="description" content="Astro description" />
     <meta name="viewport" content="width=device-width" />
     <link rel="icon" type="image/svg+xml" href={`${BASE}favicon.svg?v=${ASSET_VERSION}`} />
+    <link rel="manifest" href={`${BASE}manifest.json`} crossorigin="use-credentials" />
+    <meta name="theme-color" content="#22c55e" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Player" />
     <ViewTransitions fallback="swap" />
     <meta name="generator" content={Astro.generator} />
     <title>{title}</title>
@@ -47,32 +53,57 @@ const ASSET_VERSION = "20260506-1";
         <a href="#search" data-mobile-section="search" class="mobile-nav-item"><span class="mobile-nav-ico">⌕</span><span>Buscar</span></a>
         <a href="#library" data-mobile-section="library" class="mobile-nav-item"><span class="mobile-nav-ico">☰</span><span>Biblioteca</span></a>
         <a href="#queue" data-mobile-section="queue" class="mobile-nav-item"><span class="mobile-nav-ico">＋</span><span>Cola</span></a>
+        <button id="pwa-install-btn" type="button" class="mobile-nav-item" style="display:none"><span class="mobile-nav-ico">⬇</span><span>Instalar</span></button>
       </nav>
     </div>
     <script is:inline>
       (() => {
+        // ── Route spinner ──────────────────────────────────────────
         const spin = document.getElementById("route-spin");
         const show = () => spin?.classList.remove("hidden");
         const hide = () => spin?.classList.add("hidden");
         window.addEventListener("pageshow", hide);
         document.addEventListener("astro:page-load", hide);
+
+        // ── Mobile nav click handler ────────────────────────────────
         document.addEventListener("click", (e) => {
           const target = e.target;
           if (!(target instanceof Element)) return;
+
+          // PWA install button
+          if (target.closest("#pwa-install-btn")) {
+            if (!window._pwaPrompt) return;
+            window._pwaPrompt.prompt();
+            window._pwaPrompt.userChoice.then(({ outcome }) => {
+              if (outcome === "accepted") {
+                window._pwaPrompt = null;
+                const btn = document.getElementById("pwa-install-btn");
+                if (btn) btn.style.display = "none";
+              }
+            });
+            return;
+          }
+
           const link = target.closest("a");
           if (!link) return;
           const mobileSection = link.getAttribute("data-mobile-section");
           if (mobileSection) {
             e.preventDefault();
             show();
-            if (window.location.pathname.includes('/playlist/')) {
-              const home = window.location.pathname.replace(/\/playlist\/[^/]+\/?$/, '/');
-              window.location.href = home + '#' + mobileSection;
+            if (window.location.pathname.includes("/playlist/")) {
+              const home = window.location.pathname.replace(/\/playlist\/[^/]+\/?$/, "/");
+              // Anchor click so Astro View Transitions intercepts → keeps Player alive
+              const a = document.createElement("a");
+              a.href = home + "#" + mobileSection;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
             } else {
               window.location.hash = mobileSection;
               document.dispatchEvent(new CustomEvent("mobile-nav-select", { detail: { section: mobileSection } }));
               window.setTimeout(hide, 700);
             }
+            updateActiveNav(mobileSection);
             return;
           }
           const href = link.getAttribute("href") || "";
@@ -82,6 +113,38 @@ const ASSET_VERSION = "20260506-1";
               window.setTimeout(hide, 900);
             }
           }
+        });
+
+        // ── Active nav state ────────────────────────────────────────
+        function updateActiveNav(section) {
+          const s = section || window.location.hash.replace("#", "") || "home";
+          document.querySelectorAll("[data-mobile-section]").forEach((el) => {
+            el.classList.toggle("is-active", el.getAttribute("data-mobile-section") === s);
+          });
+        }
+        updateActiveNav();
+        window.addEventListener("hashchange", () => updateActiveNav());
+        document.addEventListener("astro:page-load", () => updateActiveNav());
+
+        // ── Service Worker ──────────────────────────────────────────
+        if ("serviceWorker" in navigator) {
+          window.addEventListener("load", () => {
+            navigator.serviceWorker.register("/_audios/sw.js", { scope: "/_audios/" }).catch(() => {});
+          });
+        }
+
+        // ── PWA install prompt ──────────────────────────────────────
+        window._pwaPrompt = null;
+        window.addEventListener("beforeinstallprompt", (e) => {
+          e.preventDefault();
+          window._pwaPrompt = e;
+          const btn = document.getElementById("pwa-install-btn");
+          if (btn) btn.style.display = "";
+        });
+        window.addEventListener("appinstalled", () => {
+          window._pwaPrompt = null;
+          const btn = document.getElementById("pwa-install-btn");
+          if (btn) btn.style.display = "none";
         });
       })();
     </script>
@@ -128,7 +191,7 @@ const ASSET_VERSION = "20260506-1";
           height: 56px;
           z-index: 90;
           display: grid;
-          grid-template-columns: 1fr 1fr 1fr 1fr;
+          grid-template-columns: repeat(auto-fit, minmax(52px, 1fr));
           background: #090909;
           border-top: 1px solid #222;
         }
@@ -137,15 +200,25 @@ const ASSET_VERSION = "20260506-1";
           display: grid;
           place-content: center;
           gap: 2px;
-          color: #d4d4d8;
+          color: #a1a1aa;
           font-size: 11px;
           text-decoration: none;
           justify-items: center;
           align-items: center;
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 0;
+          transition: color 0.15s;
+        }
+
+        .mobile-nav-item.is-active,
+        .mobile-nav-item:active {
+          color: #22c55e;
         }
 
         .mobile-nav-ico {
-          font-size: 32px;
+          font-size: 26px;
           line-height: 1;
         }
       }

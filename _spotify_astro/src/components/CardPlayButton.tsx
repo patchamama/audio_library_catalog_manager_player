@@ -4,13 +4,11 @@ import { Pause, Play } from "@/icons/PlayerIcons"
 
 
 export function CardPlayButton({id, size = 'small'}) {
-  const {
-    currentMusic,
-    isPlaying,
-    setIsPlaying,
-    setCurrentMusic,
-    setMobilePlayerVisible
-  } = usePlayerStore(state => state)
+  const currentMusic = usePlayerStore(state => state.currentMusic);
+  const isPlaying = usePlayerStore(state => state.isPlaying);
+  const setIsPlaying = usePlayerStore(state => state.setIsPlaying);
+  const setCurrentMusic = usePlayerStore(state => state.setCurrentMusic);
+  const setMobilePlayerVisible = usePlayerStore(state => state.setMobilePlayerVisible);
 
   const isPlayingPlaylist = isPlaying && currentMusic?.playlist?.id === id
   const isThisPlaylistInStore = currentMusic?.playlist?.id === id

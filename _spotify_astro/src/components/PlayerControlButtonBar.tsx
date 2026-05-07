@@ -8,7 +8,10 @@ interface Props {
 }
 
 export function PlayerControlButtonBar({ onSeekBack, onSeekForward }: Props) {
-  const {currentMusic, isPlaying, setIsPlaying, setCurrentMusic} = usePlayerStore(state => state);
+  const currentMusic = usePlayerStore(state => state.currentMusic);
+  const isPlaying = usePlayerStore(state => state.isPlaying);
+  const setIsPlaying = usePlayerStore(state => state.setIsPlaying);
+  const setCurrentMusic = usePlayerStore(state => state.setCurrentMusic);
   const { getNextSong, getPreviousSong } = useCurrentMusic(currentMusic);
 
 
