@@ -2230,71 +2230,71 @@
  * Board
  */
 .blue .cg-board-wrap {
-  background-image: url(/_audios/spotify/images/board/blue.svg);
+  background-image: url(/_audios/player/images/board/blue.svg);
 }
 .brown .cg-board-wrap {
-  background-image: url(/_audios/spotify/images/board/brown.svg);
+  background-image: url(/_audios/player/images/board/brown.svg);
 }
 .zeit .cg-board-wrap {
-  background-image: url(/_audios/spotify/images/board/zeit.svg);
+  background-image: url(/_audios/player/images/board/zeit.svg);
 }
 .chesscom .cg-board-wrap {
-  background-image: url(/_audios/spotify/images/board/chesscom.svg);
+  background-image: url(/_audios/player/images/board/chesscom.svg);
 }
 .informator .cg-board-wrap {
-  background-image: url(/_audios/spotify/images/board/informator.svg);
+  background-image: url(/_audios/player/images/board/informator.svg);
 }
 .sportverlag .cg-board-wrap {
-  background-image: url(/_audios/spotify/images/board/sportverlag.svg);
+  background-image: url(/_audios/player/images/board/sportverlag.svg);
 }
 .beyer .cg-board-wrap {
-  background-image: url(/_audios/spotify/images/board/beyer.svg);
+  background-image: url(/_audios/player/images/board/beyer.svg);
 }
 .falken .cg-board-wrap {
-  background-image: url(/_audios/spotify/images/board/falken.svg);
+  background-image: url(/_audios/player/images/board/falken.svg);
 }
 .green .cg-board-wrap {
-  background-image: url(/_audios/spotify/images/board/green.svg);
+  background-image: url(/_audios/player/images/board/green.svg);
 }
 
 /*
  * Board
  */
 .merida .cg-board piece.pawn.white {
-  background-image: url('/_audios/spotify/images/pieces/merida/wP.svg');
+  background-image: url('/_audios/player/images/pieces/merida/wP.svg');
 }
 .merida .cg-board piece.bishop.white {
-  background-image: url('/_audios/spotify/images/pieces/merida/wB.svg');
+  background-image: url('/_audios/player/images/pieces/merida/wB.svg');
 }
 .merida .cg-board piece.knight.white {
-  background-image: url('/_audios/spotify/images/pieces/merida/wN.svg');
+  background-image: url('/_audios/player/images/pieces/merida/wN.svg');
 }
 .merida .cg-board piece.rook.white {
-  background-image: url('/_audios/spotify/images/pieces/merida/wR.svg');
+  background-image: url('/_audios/player/images/pieces/merida/wR.svg');
 }
 .merida .cg-board piece.queen.white {
-  background-image: url('/_audios/spotify/images/pieces/merida/wQ.svg');
+  background-image: url('/_audios/player/images/pieces/merida/wQ.svg');
 }
 .merida .cg-board piece.king.white {
-  background-image: url('/_audios/spotify/images/pieces/merida/wK.svg');
+  background-image: url('/_audios/player/images/pieces/merida/wK.svg');
 }
 .merida .cg-board piece.pawn.black {
-  background-image: url('/_audios/spotify/images/pieces/merida/bP.svg');
+  background-image: url('/_audios/player/images/pieces/merida/bP.svg');
 }
 .merida .cg-board piece.bishop.black {
-  background-image: url('/_audios/spotify/images/pieces/merida/bB.svg');
+  background-image: url('/_audios/player/images/pieces/merida/bB.svg');
 }
 .merida .cg-board piece.knight.black {
-  background-image: url('/_audios/spotify/images/pieces/merida/bN.svg');
+  background-image: url('/_audios/player/images/pieces/merida/bN.svg');
 }
 .merida .cg-board piece.rook.black {
-  background-image: url('/_audios/spotify/images/pieces/merida/bR.svg');
+  background-image: url('/_audios/player/images/pieces/merida/bR.svg');
 }
 .merida .cg-board piece.queen.black {
-  background-image: url('/_audios/spotify/images/pieces/merida/bQ.svg');
+  background-image: url('/_audios/player/images/pieces/merida/bQ.svg');
 }
 .merida .cg-board piece.king.black {
-  background-image: url('/_audios/spotify/images/pieces/merida/bK.svg');
+  background-image: url('/_audios/player/images/pieces/merida/bK.svg');
 }
 
 /* Wikipedia */

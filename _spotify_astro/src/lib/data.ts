@@ -5,7 +5,7 @@ import type { Playlist, Song } from "./types";
 
 const MEDIA_ROOT = path.resolve(process.cwd(), "..");
 const MEDIA_BASE = "/_audios";
-const DEFAULT_COVER = "/_audios/spotify/default-cover.svg";
+const DEFAULT_COVER = "/_audios/player/default-cover.svg";
 const IGNORE = new Set([
   ".git",
   ".agents",

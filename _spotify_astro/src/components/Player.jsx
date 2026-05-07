@@ -368,7 +368,7 @@ export function Player() {
           </div>
           <div className="mt-2 flex items-center gap-2">
             <img
-              src={currentMusic.song?.image || "/_audios/spotify/default-cover.svg"}
+              src={currentMusic.song?.image || "/_audios/player/default-cover.svg"}
               alt={currentMusic.song?.title || "cover"}
               className="w-10 h-10 rounded object-cover shrink-0"
             />

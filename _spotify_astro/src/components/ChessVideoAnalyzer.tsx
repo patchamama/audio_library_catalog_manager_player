@@ -13,7 +13,7 @@ type BoardMap = Record<string, PieceCode | null>;
 
 const START_FEN = "start";
 const BASE_URL = import.meta.env.BASE_URL || "/";
-const ASSET_BASE = BASE_URL === "/" ? "/_audios/spotify/" : (BASE_URL.endsWith("/") ? BASE_URL : `${BASE_URL}/`);
+const ASSET_BASE = BASE_URL === "/" ? "/_audios/player/" : (BASE_URL.endsWith("/") ? BASE_URL : `${BASE_URL}/`);
 const PGN_VIEWER_JS = "https://cdn.jsdelivr.net/npm/@mliebelt/pgn-viewer@1.6.11/lib/dist.js";
 const PGN_VIEWER_CSS = `${ASSET_BASE}pgn-viewer.css`;
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"];

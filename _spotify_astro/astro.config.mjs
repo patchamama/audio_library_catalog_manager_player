@@ -5,8 +5,8 @@ import react from "@astrojs/react";
 
 // https://astro.build/config
 export default defineConfig({
-  base: '/_audios/spotify',
-  outDir: '../spotify',
+  base: '/_audios/player',
+  outDir: '../player',
   integrations: [tailwind(), svelte(), react()],
   output: 'static',
   vite: {
