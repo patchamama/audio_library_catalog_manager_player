@@ -64,6 +64,7 @@ const ASSET_VERSION = "20260506-1";
         const hide = () => spin?.classList.add("hidden");
         window.addEventListener("pageshow", hide);
         document.addEventListener("astro:page-load", hide);
+        document.addEventListener("astro:before-preparation", show);
 
         // ── Mobile nav click handler ────────────────────────────────
         document.addEventListener("click", (e) => {
