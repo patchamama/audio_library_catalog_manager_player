@@ -49,6 +49,10 @@ export function AlbumBrowser({ playlists: initialPlaylists, songs: initialSongs,
   );
   const [navLoading, setNavLoading] = useState(false);
   const [visible, setVisible] = useState(PAGE_SIZE);
+  const [fontScale, setFontScale] = useState<0|1|2|3>(() => {
+    if (typeof window === 'undefined') return 0;
+    return (Number(localStorage.getItem('font-scale') ?? 0) as 0|1|2|3);
+  });
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const mobileSentinelRef = useRef<HTMLDivElement | null>(null);
   const currentMusic = usePlayerStore(state => state.currentMusic);
@@ -246,6 +250,11 @@ export function AlbumBrowser({ playlists: initialPlaylists, songs: initialSongs,
     return () => window.clearTimeout(id);
   }, [navLoading]);
 
+  useEffect(() => {
+    document.documentElement.style.fontSize = `${16 + fontScale}px`;
+    localStorage.setItem('font-scale', String(fontScale));
+  }, [fontScale]);
+
   if (isMobile) {
     return (
       <section className="px-0 pt-4 pb-24 relative">
@@ -256,7 +265,10 @@ export function AlbumBrowser({ playlists: initialPlaylists, songs: initialSongs,
         )}
         {mobileSection === "home" && (
           <div id="home" className="px-3">
-            <h2 className="text-xl font-semibold mb-4">Inicio</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold">Inicio</h2>
+              {fontSizeControls}
+            </div>
             <div className="grid grid-cols-2 gap-3">
               {playlists.slice(0, visible).map((playlist) => {
                 const isCurrentAlbum = currentMusic?.playlist?.albumId === playlist.albumId;
@@ -410,27 +422,48 @@ export function AlbumBrowser({ playlists: initialPlaylists, songs: initialSongs,
     );
   }
 
+  const fontSizeControls = (
+    <div className="flex items-center gap-0.5 shrink-0" title="Tamaño de fuente">
+      {([0, 1, 2, 3] as const).map(level => (
+        <button
+          key={level}
+          onClick={() => setFontScale(level)}
+          className={`rounded px-1 py-0.5 font-bold leading-none transition-colors ${
+            fontScale === level ? 'text-green-400' : 'text-zinc-500 hover:text-zinc-300'
+          }`}
+          style={{ fontSize: `${10 + level * 2}px` }}
+          title={level === 0 ? 'Tamaño normal' : `+${level}px`}
+        >
+          A
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <section>
-      <div className="mb-4 grid gap-2 md:grid-cols-2">
-        <label className="flex items-center gap-2 bg-zinc-800/80 rounded-md px-3 py-2">
-          <span aria-hidden="true">🔎</span>
-          <input
-            className="bg-transparent outline-none w-full text-sm"
-            placeholder="Buscar álbum o autor"
-            value={albumInput}
-            onChange={(e) => setAlbumInput(e.target.value)}
-          />
-        </label>
-        <label className="flex items-center gap-2 bg-zinc-800/80 rounded-md px-3 py-2">
-          <span aria-hidden="true">🎵</span>
-          <input
-            className="bg-transparent outline-none w-full text-sm"
-            placeholder="Buscar contenido dentro de álbumes"
-            value={contentInput}
-            onChange={(e) => setContentInput(e.target.value)}
-          />
-        </label>
+      <div className="mb-4 flex gap-3 items-start">
+        <div className="flex-1 grid gap-2 md:grid-cols-2">
+          <label className="flex items-center gap-2 bg-zinc-800/80 rounded-md px-3 py-2">
+            <span aria-hidden="true">🔎</span>
+            <input
+              className="bg-transparent outline-none w-full text-sm"
+              placeholder="Buscar álbum o autor"
+              value={albumInput}
+              onChange={(e) => setAlbumInput(e.target.value)}
+            />
+          </label>
+          <label className="flex items-center gap-2 bg-zinc-800/80 rounded-md px-3 py-2">
+            <span aria-hidden="true">🎵</span>
+            <input
+              className="bg-transparent outline-none w-full text-sm"
+              placeholder="Buscar contenido dentro de álbumes"
+              value={contentInput}
+              onChange={(e) => setContentInput(e.target.value)}
+            />
+          </label>
+        </div>
+        {fontSizeControls}
       </div>
       {showSearchSpinner && pendingDesktopSearch && (
         <div className="mb-3 flex items-center gap-2 text-xs text-zinc-400">
@@ -467,8 +500,8 @@ export function AlbumBrowser({ playlists: initialPlaylists, songs: initialSongs,
                 />
               </picture>
               <div className="flex flex-auto flex-col px-2">
-                <h4 className="text-white text-sm">{playlist.title}</h4>
-                <span className="text-xs text-gray-400">{playlist.artists.join(", ")}</span>
+                <h4 className="text-white text-sm line-clamp-2">{playlist.title}</h4>
+                <span className="text-xs text-gray-400 truncate">{playlist.artists.join(", ")}</span>
               </div>
             </a>
           ))}
