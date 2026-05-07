@@ -16,11 +16,21 @@ const normalizeForSearch = (value: string) =>
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .trim();
+const sameArtists = (a: string[], b: string[]) => {
+  const left = a.map(normalizeForSearch).filter(Boolean).sort();
+  const right = b.map(normalizeForSearch).filter(Boolean).sort();
+  if (left.length !== right.length) return false;
+  return left.every((v, i) => v === right[i]);
+};
 
 export function AlbumBrowser({ playlists, songs, baseUrl }: Props) {
+  const [albumInput, setAlbumInput] = useState("");
+  const [contentInput, setContentInput] = useState("");
+  const [mobileInput, setMobileInput] = useState("");
   const [albumQuery, setAlbumQuery] = useState("");
   const [contentQuery, setContentQuery] = useState("");
   const [mobileQuery, setMobileQuery] = useState("");
+  const [showSearchSpinner, setShowSearchSpinner] = useState(false);
   const [mobileSection, setMobileSection] = useState<"home" | "search" | "library" | "queue">("home");
   const [isMobile, setIsMobile] = useState(false);
   const [navLoading, setNavLoading] = useState(false);
@@ -28,13 +38,40 @@ export function AlbumBrowser({ playlists, songs, baseUrl }: Props) {
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const { queue, removeFromQueue, clearQueue, setCurrentMusic, setIsPlaying, currentMusic, addToQueue, setMobilePlayerVisible } = usePlayerStore((s) => s);
   const queueSet = useMemo(() => new Set(queue.map((q) => `${q.albumId}-${q.id}-${q.url}`)), [queue]);
+  const pendingDesktopSearch = albumInput !== albumQuery || contentInput !== contentQuery;
+  const pendingMobileSearch = mobileInput !== mobileQuery;
+  const hasPendingSearch = pendingDesktopSearch || pendingMobileSearch;
+
+  useEffect(() => {
+    const id = window.setTimeout(() => setAlbumQuery(albumInput), 2000);
+    return () => window.clearTimeout(id);
+  }, [albumInput]);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => setContentQuery(contentInput), 2000);
+    return () => window.clearTimeout(id);
+  }, [contentInput]);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => setMobileQuery(mobileInput), 2000);
+    return () => window.clearTimeout(id);
+  }, [mobileInput]);
+
+  useEffect(() => {
+    if (!hasPendingSearch) {
+      setShowSearchSpinner(false);
+      return;
+    }
+    const id = window.setTimeout(() => setShowSearchSpinner(true), 3000);
+    return () => window.clearTimeout(id);
+  }, [hasPendingSearch, albumInput, contentInput, mobileInput]);
 
   const filteredAlbums = useMemo(() => {
     const aQ = normalizeForSearch(albumQuery);
     return playlists.filter((p) => {
       if (!aQ) return true;
       const title = normalizeForSearch(p.title);
-      const artists = normalizeForSearch(p.artists.join(", "));
+      const artists = normalizeForSearch((p.artists || []).join(" "));
       return title.includes(aQ) || artists.includes(aQ);
     });
   }, [playlists, albumQuery]);
@@ -45,7 +82,16 @@ export function AlbumBrowser({ playlists, songs, baseUrl }: Props) {
     const albumById = new Map<number, Playlist>();
     playlists.forEach((p) => albumById.set(p.albumId, p));
     return songs
-      .filter((s) => normalizeForSearch(s.title).includes(cQ))
+      .filter((s) => {
+        const title = normalizeForSearch(s.title);
+        if (title.includes(cQ)) return true;
+        const album = albumById.get(s.albumId);
+        if (!album) return false;
+        const authorsDiffer = !sameArtists(s.artists || [], album.artists || []);
+        if (!authorsDiffer) return false;
+        const songArtists = normalizeForSearch((s.artists || []).join(" "));
+        return songArtists.includes(cQ);
+      })
       .map((s) => ({ song: s, album: albumById.get(s.albumId) }))
       .filter((x) => !!x.album) as Array<{ song: Song; album: Playlist }>;
   }, [contentQuery, songs, playlists]);
@@ -61,7 +107,8 @@ export function AlbumBrowser({ playlists, songs, baseUrl }: Props) {
     if (mobileTokens.length === 0) return playlists.slice(0, 120);
     return playlists.filter((p) => {
       const title = normalizeForSearch(p.title);
-      return mobileTokens.some((t) => title.includes(t));
+      const artists = normalizeForSearch((p.artists || []).join(" "));
+      return mobileTokens.some((t) => title.includes(t) || artists.includes(t));
     });
   }, [playlists, mobileTokens]);
   const mobileSearchSongs = useMemo(() => {
@@ -71,9 +118,10 @@ export function AlbumBrowser({ playlists, songs, baseUrl }: Props) {
     return songs
       .filter((s) => {
         const title = normalizeForSearch(s.title);
-        const artists = normalizeForSearch(s.artists.join(" "));
-        const album = normalizeForSearch(s.album);
-        return mobileTokens.some((t) => title.includes(t) || artists.includes(t) || album.includes(t));
+        const albumData = byId.get(s.albumId);
+        const authorsDiffer = albumData ? !sameArtists(s.artists || [], albumData.artists || []) : false;
+        const artists = authorsDiffer ? normalizeForSearch((s.artists || []).join(" ")) : "";
+        return mobileTokens.some((t) => title.includes(t) || (artists && artists.includes(t)));
       })
       .map((song) => ({ song, album: byId.get(song.albumId) }))
       .filter((x) => !!x.album) as Array<{ song: Song; album: Playlist }>;
@@ -176,10 +224,16 @@ export function AlbumBrowser({ playlists, songs, baseUrl }: Props) {
               <input
                 className="bg-zinc-800 rounded-md px-3 py-2 text-sm outline-none"
                 placeholder="Buscar álbumes o audios"
-                value={mobileQuery}
-                onChange={(e) => setMobileQuery(e.target.value)}
+                value={mobileInput}
+                onChange={(e) => setMobileInput(e.target.value)}
               />
             </div>
+            {showSearchSpinner && pendingMobileSearch && (
+              <div className="mt-2 flex items-center gap-2 text-xs text-zinc-400">
+                <div className="h-3 w-3 rounded-full border-2 border-zinc-600 border-t-green-500 animate-spin" />
+                Buscando...
+              </div>
+            )}
             <div className="mt-4 space-y-2">
               {mobileSearchAlbums.map((playlist) => (
                 <a key={`a-${playlist.id}`} href={`${baseUrl}playlist/${playlist.id}/`} className="flex items-center gap-3 rounded-md bg-zinc-800/70 px-2 py-2" onClick={() => { setNavLoading(true); setMobilePlayerVisible(true); }}>
@@ -194,41 +248,39 @@ export function AlbumBrowser({ playlists, songs, baseUrl }: Props) {
                 </a>
               ))}
               {mobileSearchSongs.map(({ song, album }) => (
-                <a
-                  key={`s-${song.url}`}
-                  href={`${baseUrl}playlist/${album.id}/`}
-                  className="flex items-center gap-3 rounded-md bg-zinc-800/70 px-3 py-2"
-                  onClick={() => {
-                    setNavLoading(true);
-                    setMobilePlayerVisible(true);
-                    if (typeof window === "undefined") return;
-                    localStorage.setItem("player:state", JSON.stringify({
-                      albumId: album.albumId,
-                      songId: song.id,
-                      url: song.url,
-                      time: 0,
-                    }));
-                    localStorage.setItem("player:activeAlbum", String(album.albumId));
-                    localStorage.setItem("player:activeSong", String(song.id));
-                  }}
-                >
-                  <img src={song.image} alt={song.title} className="w-10 h-10 rounded object-cover" />
-                  <div className="min-w-0">
-                    <div className="text-xs text-zinc-400">Audio</div>
-                    <div className="text-sm text-zinc-100 truncate">{song.title}</div>
-                  </div>
-                  <button
-                    className="ml-auto text-xs bg-zinc-700 hover:bg-zinc-600 rounded px-2 py-1"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      addToQueue(normalizeSongMediaType(song));
+                <div key={`s-${song.url}`} className="flex items-center gap-2 rounded-md bg-zinc-800/70 px-2 py-2">
+                  <a
+                    href={`${baseUrl}playlist/${album.id}/`}
+                    className="flex items-center gap-3 min-w-0 flex-1"
+                    onClick={() => {
+                      setNavLoading(true);
+                      setMobilePlayerVisible(true);
+                      if (typeof window === "undefined") return;
+                      localStorage.setItem("player:state", JSON.stringify({
+                        albumId: album.albumId,
+                        songId: song.id,
+                        url: song.url,
+                        time: 0,
+                      }));
+                      localStorage.setItem("player:activeAlbum", String(album.albumId));
+                      localStorage.setItem("player:activeSong", String(song.id));
                     }}
+                  >
+                    <img src={song.image} alt={song.title} className="w-10 h-10 rounded object-cover" />
+                    <div className="min-w-0">
+                      <div className="text-xs text-zinc-400">Audio</div>
+                      <div className="text-sm text-zinc-100 truncate">{song.title}</div>
+                    </div>
+                  </a>
+                  <button
+                    className="shrink-0 text-xs bg-zinc-700 hover:bg-zinc-600 rounded px-2 py-1"
+                    onClick={() => addToQueue(normalizeSongMediaType(song))}
                     title="Agregar a cola"
+                    type="button"
                   >
                     {queueSet.has(`${song.albumId}-${song.id}-${song.url}`) ? "✓" : "＋"}
                   </button>
-                </a>
+                </div>
               ))}
             </div>
           </div>
@@ -300,8 +352,8 @@ export function AlbumBrowser({ playlists, songs, baseUrl }: Props) {
           <input
             className="bg-transparent outline-none w-full text-sm"
             placeholder="Buscar álbum o autor"
-            value={albumQuery}
-            onChange={(e) => setAlbumQuery(e.target.value)}
+            value={albumInput}
+            onChange={(e) => setAlbumInput(e.target.value)}
           />
         </label>
         <label className="flex items-center gap-2 bg-zinc-800/80 rounded-md px-3 py-2">
@@ -309,11 +361,17 @@ export function AlbumBrowser({ playlists, songs, baseUrl }: Props) {
           <input
             className="bg-transparent outline-none w-full text-sm"
             placeholder="Buscar contenido dentro de álbumes"
-            value={contentQuery}
-            onChange={(e) => setContentQuery(e.target.value)}
+            value={contentInput}
+            onChange={(e) => setContentInput(e.target.value)}
           />
         </label>
       </div>
+      {showSearchSpinner && pendingDesktopSearch && (
+        <div className="mb-3 flex items-center gap-2 text-xs text-zinc-400">
+          <div className="h-3 w-3 rounded-full border-2 border-zinc-600 border-t-green-500 animate-spin" />
+          Buscando...
+        </div>
+      )}
 
       <p className="text-sm text-zinc-400 mt-2">
         {mode === "songs"

@@ -55,6 +55,10 @@ export function Player() {
     if (payload.songId) localStorage.setItem("player:activeSong", String(payload.songId));
     localStorage.setItem("player:volume", String(payload.volume ?? 0.5));
   };
+  const mediaForMobile = getMediaElement();
+  const mobileDurationRaw = mediaForMobile?.duration || 0;
+  const mobileDuration = Number.isFinite(mobileDurationRaw) && mobileDurationRaw > 0 ? mobileDurationRaw : 0;
+  const safeMobileTime = Math.max(0, Math.min(mobileTime || 0, mobileDuration || Math.max(mobileTime || 0, 0)));
 
   useEffect(() => {
     const syncMobile = () => {
@@ -65,6 +69,14 @@ export function Player() {
     window.addEventListener("resize", syncMobile);
     return () => window.removeEventListener("resize", syncMobile);
   }, []);
+
+  useEffect(() => {
+    if (!isMobile) return;
+    setVolume(1);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("player:volume", "1");
+    }
+  }, [isMobile, setVolume]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -180,7 +192,7 @@ export function Player() {
       .catch((e) => {
         setIsLoading(false);
         setTrackLoading(false);
-        if (e?.name !== "NotAllowedError") {
+        if (e?.name !== "NotAllowedError" && e?.name !== "AbortError") {
           console.log("error playing: ", e);
         }
       })
@@ -338,8 +350,8 @@ export function Player() {
         <div className="w-full px-1">
           <div className="absolute left-0 right-0 bottom-0 px-2">
             <Slider
-              value={[mobileTime]}
-              max={getMediaElement()?.duration || 1}
+              value={[safeMobileTime]}
+              max={mobileDuration || Math.max(safeMobileTime, 1)}
               min={0}
               step={0.1}
               className="w-full"
@@ -347,6 +359,7 @@ export function Player() {
                 const media = getMediaElement();
                 if (!media) return;
                 const [nextTime] = value;
+                if (!Number.isFinite(nextTime)) return;
                 media.currentTime = nextTime;
                 setMobileTime(nextTime);
                 setPersistedState({ time: nextTime });
@@ -364,7 +377,7 @@ export function Player() {
                 {(currentMusic.song?.title || "Sin reproducción")} · {(currentMusic.song?.artists?.join(", ") || "Sin autor")}
               </div>
               <div className="text-[10px] text-zinc-500">
-                {formatTime(mobileTime)} / {formatTime(getMediaElement()?.duration || 0)}
+                {formatTime(safeMobileTime)} / {formatTime(mobileDuration)}
               </div>
             </div>
             <button
