@@ -31,8 +31,42 @@ self.addEventListener('fetch', (event) => {
   const isShell = SHELL_EXTS.has(ext) &&
     (pathname.startsWith('/_audios/player/') || pathname.startsWith('/fonts/'));
 
-  // Audio & images: serve from album cache only if pre-cached, otherwise pure network
-  if (isAudio || isImage) {
+  // Audio: network-first (zero SW overhead for streaming online).
+  // Offline fallback: serve the pre-cached full file as a proper 206 range response
+  // so the audio element can seek without buffering the entire file first.
+  if (isAudio) {
+    event.respondWith(
+      fetch(request).catch(async () => {
+        const cache = await caches.open(ALBUM_CACHE);
+        const fullResp = await cache.match(new Request(request.url));
+        if (!fullResp) return new Response('Audio unavailable offline', { status: 503 });
+
+        const rangeHeader = request.headers.get('Range');
+        if (!rangeHeader) return fullResp;
+
+        const blob = await fullResp.blob();
+        const m = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+        if (!m) return fullResp;
+
+        const start = parseInt(m[1], 10);
+        const end = m[2] ? parseInt(m[2], 10) : blob.size - 1;
+
+        return new Response(blob.slice(start, end + 1), {
+          status: 206,
+          headers: {
+            'Content-Range': `bytes ${start}-${end}/${blob.size}`,
+            'Content-Length': String(end - start + 1),
+            'Content-Type': fullResp.headers.get('Content-Type') || 'audio/mpeg',
+            'Accept-Ranges': 'bytes',
+          },
+        });
+      })
+    );
+    return;
+  }
+
+  // Images: cache-first (covers are small — instant load from cache, network fallback)
+  if (isImage) {
     event.respondWith(
       caches.open(ALBUM_CACHE).then(async cache => {
         const cached = await cache.match(request);
