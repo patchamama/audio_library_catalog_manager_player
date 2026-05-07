@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Playlist, Song } from "@/lib/types";
 import { usePlayerStore } from "@/store/playerStore";
 import { normalizeSongMediaType } from "@/lib/media";
+import { fetchAllData } from "@/services/ApiService";
 
 interface Props {
   playlists: Playlist[];
@@ -28,8 +29,7 @@ export function AlbumBrowser({ playlists: initialPlaylists, songs: initialSongs,
   const [songs, setSongs] = useState<Song[]>(initialSongs);
 
   useEffect(() => {
-    fetch('/_audios/api.php')
-      .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+    fetchAllData()
       .then(data => {
         if (Array.isArray(data.playlists) && data.playlists.length > 0) setPlaylists(data.playlists);
         if (Array.isArray(data.songs) && data.songs.length > 0) setSongs(data.songs);

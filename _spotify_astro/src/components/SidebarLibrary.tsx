@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Playlist } from "@/lib/types";
+import { fetchAllData } from "@/services/ApiService";
 
 interface Props {
   playlists?: Playlist[];
@@ -13,8 +14,7 @@ export function SidebarLibrary({ playlists: initialPlaylists = [], baseUrl }: Pr
   const [visible, setVisible] = useState(PAGE_SIZE);
 
   useEffect(() => {
-    fetch('/_audios/api.php')
-      .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+    fetchAllData()
       .then(data => {
         if (Array.isArray(data.playlists) && data.playlists.length > 0) setPlaylists(data.playlists);
       })

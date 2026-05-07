@@ -1,5 +1,17 @@
 const PHP_API = '/_audios/api.php';
 
+// Single in-flight promise shared across all callers — prevents duplicate HTTP requests
+let _apiPromise: Promise<any> | null = null;
+
+export function fetchAllData(): Promise<{ playlists: any[]; songs: any[] }> {
+  if (!_apiPromise) {
+    _apiPromise = fetch(PHP_API)
+      .then(r => { if (!r.ok) throw new Error('PHP API unavailable'); return r.json(); })
+      .catch(() => { _apiPromise = null; throw new Error(); });
+  }
+  return _apiPromise;
+}
+
 function parsePlaylistData(data: any, playListId: number | string) {
   const playlist = data.playlists.find(
     (p: any) => String(p.id) === String(playListId) || String(p.albumId) === String(playListId)
@@ -20,9 +32,7 @@ export async function getPlayListInfoById(playListId: number | string) {
     : `${import.meta.env.BASE_URL}/`;
 
   try {
-    const res = await fetch(PHP_API);
-    if (!res.ok) throw new Error('PHP API unavailable');
-    return parsePlaylistData(await res.json(), playListId);
+    return parsePlaylistData(await fetchAllData(), playListId);
   } catch {
     const res = await fetch(`${base}api/get-info-playlist.json`);
     return parsePlaylistData(await res.json(), playListId);

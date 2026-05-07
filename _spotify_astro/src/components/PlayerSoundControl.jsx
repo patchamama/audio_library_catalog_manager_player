@@ -35,7 +35,7 @@ export const PlayerSoundControl = ({ audio }) => {
         value={[safeCurrentTime]}
         max={duration || Math.max(safeCurrentTime, 1)}
         min={0}
-        className="w-[44vw] md:w-[400px]"
+        className="w-[44vw] md:w-full"
         onValueChange={(value) => {
           const [newCurrentTime] = value
           if (!Number.isFinite(newCurrentTime)) return

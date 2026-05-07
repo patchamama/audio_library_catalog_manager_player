@@ -416,7 +416,7 @@ export function Player() {
         </div>
       </div>
     )}
-    <div className="relative grid grid-cols-1 md:grid-cols-[280px_1fr_220px] items-center w-full px-2 gap-1 md:gap-4 z-50 h-full">
+    <div className="relative grid grid-cols-1 md:grid-cols-[minmax(0,280px)_1fr_auto] items-center w-full px-2 gap-1 md:gap-4 z-50 h-full">
       {isMobile && (
         <div className="w-full px-1">
           <div className="absolute left-0 right-0 bottom-0 px-2">
@@ -483,10 +483,15 @@ export function Player() {
         </div>
       )}
       <div className="min-w-0 hidden md:block">
-        <PlayerCurrentSong {...currentMusic.song} />
+        <PlayerCurrentSong
+          {...currentMusic.song}
+          playlistPath={currentMusic.playlist?.id
+            ? `${import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : import.meta.env.BASE_URL + '/'}playlist/${currentMusic.playlist.id}/`
+            : null}
+        />
       </div>
 
-      <div className="hidden md:grid place-content-center gap-4 flex-1">
+      <div className="hidden md:grid place-content-center gap-4 min-w-0 overflow-hidden">
         <div className="flex justify-center flex-col items-center">
           <PlayerControlButtonBar onSeekBack={() => seekBy(-5)} onSeekForward={() => seekBy(5)} />
           <PlayerSoundControl audio={getMediaRef()}/>

@@ -81,7 +81,10 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(request)
         .then(response => {
-          if (response.ok) caches.open(SHELL_CACHE).then(c => c.put(request, response.clone()));
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(SHELL_CACHE).then(c => c.put(request, clone));
+          }
           return response;
         })
         .catch(() =>

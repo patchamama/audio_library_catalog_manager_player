@@ -67,7 +67,7 @@ export function PlaylistPage() {
         <div className="flex flex-col justify-between w-full">
           <h2 className="hidden md:flex flex-1 items-end">Playlist</h2>
           <div>
-            <h1 className="text-2xl md:text-5xl font-bold block text-white truncate">
+            <h1 className="text-2xl md:text-5xl font-bold text-white line-clamp-2">
               {playlist.title}
             </h1>
           </div>
