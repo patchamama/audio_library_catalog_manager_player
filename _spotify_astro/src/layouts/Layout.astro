@@ -1,5 +1,6 @@
 ---
 import { Player } from "@/components/Player"
+import { OfflineBanner } from "@/components/OfflineBanner"
 import AsideMenu from "../components/AsideMenu.astro"
 import { ViewTransitions } from "astro:transitions";
 
@@ -17,7 +18,7 @@ const ASSET_VERSION = "20260506-1";
   <head>
     <meta charset="UTF-8" />
     <meta name="description" content="Astro description" />
-    <meta name="viewport" content="width=device-width" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <link rel="icon" type="image/svg+xml" href={`${BASE}favicon.svg?v=${ASSET_VERSION}`} />
     <link rel="manifest" href={`${BASE}manifest.json`} crossorigin="use-credentials" />
     <meta name="theme-color" content="#22c55e" />
@@ -30,6 +31,7 @@ const ASSET_VERSION = "20260506-1";
     <title>{title}</title>
   </head>
   <body>
+    <OfflineBanner client:only="react" />
     <div id="app" class="relative h-screen p-2 gap-2">
       <div id="route-spin" class="route-spin hidden" aria-hidden="true">
         <div class="route-spin-ring"></div>
@@ -55,6 +57,11 @@ const ASSET_VERSION = "20260506-1";
         <a href="#queue" data-mobile-section="queue" class="mobile-nav-item"><span class="mobile-nav-ico">＋</span><span>Cola</span></a>
         <button id="pwa-install-btn" type="button" class="mobile-nav-item" style="display:none"><span class="mobile-nav-ico">⬇</span><span>Instalar</span></button>
       </nav>
+
+      <div id="ios-install-banner" style="display:none">
+        <span class="ios-install-text">Toca <strong>⬆</strong> y luego <strong>"Agregar a pantalla de inicio"</strong></span>
+        <button id="ios-install-dismiss" type="button">✕</button>
+      </div>
     </div>
     <script is:inline>
       (() => {
@@ -131,10 +138,15 @@ const ASSET_VERSION = "20260506-1";
         if ("serviceWorker" in navigator) {
           window.addEventListener("load", () => {
             navigator.serviceWorker.register("/_audios/sw.js", { scope: "/_audios/" }).catch(() => {});
+            // Request persistent storage: browser won't evict cache under storage pressure.
+            // Grants the maximum possible cache lifetime (until user clears explicitly).
+            if ("storage" in navigator && "persist" in navigator.storage) {
+              navigator.storage.persist();
+            }
           });
         }
 
-        // ── PWA install prompt ──────────────────────────────────────
+        // ── PWA install prompt (Android / Chrome) ───────────────────
         window._pwaPrompt = null;
         window.addEventListener("beforeinstallprompt", (e) => {
           e.preventDefault();
@@ -147,6 +159,21 @@ const ASSET_VERSION = "20260506-1";
           const btn = document.getElementById("pwa-install-btn");
           if (btn) btn.style.display = "none";
         });
+
+        // ── iOS install banner ──────────────────────────────────────
+        (function () {
+          const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
+          const isStandalone = window.navigator.standalone === true;
+          const dismissed = localStorage.getItem("pwa-ios-dismissed");
+          if (!isIos || isStandalone || dismissed) return;
+          const banner = document.getElementById("ios-install-banner");
+          if (banner) banner.style.display = "";
+          const dismissBtn = document.getElementById("ios-install-dismiss");
+          if (dismissBtn) dismissBtn.addEventListener("click", () => {
+            if (banner) banner.style.display = "none";
+            localStorage.setItem("pwa-ios-dismissed", "1");
+          });
+        })();
       })();
     </script>
     <style>
@@ -221,6 +248,37 @@ const ASSET_VERSION = "20260506-1";
         .mobile-nav-ico {
           font-size: 26px;
           line-height: 1;
+        }
+
+        #ios-install-banner {
+          position: fixed;
+          left: 0;
+          right: 0;
+          bottom: calc(56px + 72px);
+          z-index: 95;
+          background: #1a1a1a;
+          border-top: 1px solid #333;
+          padding: 10px 16px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          font-size: 13px;
+          color: #e4e4e7;
+        }
+
+        .ios-install-text strong {
+          color: #22c55e;
+        }
+
+        #ios-install-dismiss {
+          background: none;
+          border: none;
+          color: #71717a;
+          font-size: 16px;
+          cursor: pointer;
+          padding: 4px 8px;
+          flex-shrink: 0;
         }
       }
 

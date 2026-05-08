@@ -8,6 +8,7 @@ export interface Playlist {
   color: (typeof colors)[keyof typeof colors];
   cover: string;
   artists: string[];
+  songCount?: number;
 }
 
 export interface Song {

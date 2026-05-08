@@ -20,12 +20,20 @@ export function Player() {
   const setVolume = usePlayerStore(state => state.setVolume);
   const setIsPlaying = usePlayerStore(state => state.setIsPlaying);
   const shiftQueue = usePlayerStore(state => state.shiftQueue);
+  const queue = usePlayerStore(state => state.queue);
   const setTrackLoading = usePlayerStore(state => state.setTrackLoading);
   const audioRef = useRef();
   const videoRef = useRef();
   const prevSongUrlRef = useRef(null);
+  const prevSongDataRef = useRef(null);
+  const maxListenedPercentRef = useRef(0);
+  const dismissTimerRef = useRef(null);
+  const isMobileRef = useRef(false);
+  const lastCachedAlbumIdRef = useRef(null);
+  const lastQueueSigRef = useRef('');
   const {getNextSong} = useCurrentMusic(currentMusic)
   const [isLoading, setIsLoading] = useState(false);
+  const [cacheProgress, setCacheProgress] = useState(null);
   const [showVideoModal, setShowVideoModal] = useState(false);
   const [splitPct, setSplitPct] = useState(62);
   const [draggingSplit, setDraggingSplit] = useState(false);
@@ -52,18 +60,27 @@ export function Player() {
   const isChessVideoContext = chessText.includes("chess") || chessText.includes("ajedrez");
   const setPersistedState = (extra = {}) => {
     if (typeof window === "undefined") return;
+    const media = getMediaElement();
+    const currentTime = extra.time ?? media?.currentTime ?? 0;
+    const duration = media?.duration;
+    if (Number.isFinite(duration) && duration > 0) {
+      const pct = Math.round((currentTime / duration) * 100);
+      if (pct > maxListenedPercentRef.current) maxListenedPercentRef.current = pct;
+    }
     const payload = {
       albumId: currentMusic.playlist?.albumId ?? null,
       songId: currentMusic.song?.id ?? null,
       url: currentMusic.song?.url ?? null,
-      time: getMediaElement()?.currentTime ?? 0,
+      time: currentTime,
       volume,
       ...extra
     };
     localStorage.setItem("player:state", JSON.stringify(payload));
     if (payload.albumId) localStorage.setItem("player:activeAlbum", String(payload.albumId));
     if (payload.songId) localStorage.setItem("player:activeSong", String(payload.songId));
-    localStorage.setItem("player:volume", String(payload.volume ?? 0.5));
+    if (!isMobileRef.current) {
+      localStorage.setItem("player:volume", String(payload.volume ?? 0.5));
+    }
   };
   const mediaForMobile = getMediaElement();
   const mobileDurationRaw = mediaForMobile?.duration || 0;
@@ -72,7 +89,9 @@ export function Player() {
 
   useEffect(() => {
     const syncMobile = () => {
-      setIsMobile(window.matchMedia("(max-width: 767px)").matches);
+      const mobile = window.matchMedia("(max-width: 767px)").matches;
+      setIsMobile(mobile);
+      isMobileRef.current = mobile;
       setIsLandscape(window.matchMedia("(orientation: landscape)").matches);
     };
     syncMobile();
@@ -83,9 +102,7 @@ export function Player() {
   useEffect(() => {
     if (!isMobile) return;
     setVolume(1);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("player:volume", "1");
-    }
+    // Don't persist mobile-forced volume — desktop keeps its own preference
   }, [isMobile, setVolume]);
 
   useEffect(() => {
@@ -165,7 +182,66 @@ export function Player() {
     // Guard: same URL already loaded — Astro re-hydration or duplicate setCurrentMusic call.
     // Skip to avoid resetting the audio element and interrupting playback.
     if (song.url === prevSongUrlRef.current) return;
+
+    // Save previous song to history
+    if (prevSongDataRef.current) {
+      try {
+        const histRaw = localStorage.getItem('player:history');
+        const hist = histRaw ? JSON.parse(histRaw) : [];
+        hist.push({ ...prevSongDataRef.current, percent: maxListenedPercentRef.current, listenedAt: Date.now() });
+        if (hist.length > 100) hist.splice(0, hist.length - 100);
+        localStorage.setItem('player:history', JSON.stringify(hist));
+      } catch {}
+    }
+    maxListenedPercentRef.current = 0;
+
+    // Update recent albums and listened songs
+    if (currentMusic.playlist?.albumId) {
+      try {
+        const recentRaw = localStorage.getItem('player:recentAlbums');
+        const recent = recentRaw ? JSON.parse(recentRaw) : [];
+        const existingIdx = recent.findIndex((r) => r.albumId === currentMusic.playlist.albumId);
+        const existing = existingIdx >= 0 ? recent[existingIdx] : null;
+        const listenedSongUrls = Array.from(new Set([...(existing?.listenedSongUrls ?? []), song.url]));
+        const entry = {
+          id: currentMusic.playlist.id,
+          albumId: currentMusic.playlist.albumId,
+          title: currentMusic.playlist.title,
+          cover: currentMusic.playlist.cover,
+          artists: currentMusic.playlist.artists,
+          listenedSongUrls,
+          totalSongs: currentMusic.songs.length,
+          openedAt: Date.now(),
+        };
+        if (existingIdx >= 0) recent.splice(existingIdx, 1);
+        recent.unshift(entry);
+        if (recent.length > 10) recent.splice(10);
+        localStorage.setItem('player:recentAlbums', JSON.stringify(recent));
+        window.dispatchEvent(new CustomEvent('player:recentAlbumsUpdated'));
+      } catch {}
+    }
+
+    // Track current song data for next history entry
+    prevSongDataRef.current = {
+      url: song.url,
+      title: song.title,
+      album: song.album ?? currentMusic.playlist?.title ?? '',
+      artist: (song.artists ?? []).join(', '),
+      image: song.image ?? '',
+    };
+
     prevSongUrlRef.current = song.url;
+
+    // Track listened albums in localStorage
+    if (currentMusic.playlist?.albumId) {
+      try {
+        const _raw = localStorage.getItem('player:listenedAlbums');
+        const _ids = new Set(_raw ? JSON.parse(_raw) : []);
+        _ids.add(currentMusic.playlist.albumId);
+        localStorage.setItem('player:listenedAlbums', JSON.stringify([..._ids]));
+        window.dispatchEvent(new CustomEvent('player:listenedAlbumsUpdated'));
+      } catch {}
+    }
 
     setIsLoading(true);
     setTrackLoading(true);
@@ -198,15 +274,77 @@ export function Player() {
     play();
   }, [currentMusic])
 
-  // When the active album changes, tell the SW to cache only its cover + all its audio files
+  // When the active album changes, tell the SW to cache only its cover + all its audio files.
+  // Guard: skip if same album already requested this session (avoids duplicate on React re-hydration).
+  // The SW also has an early-exit if all files are already cached, so reloads are safe.
   useEffect(() => {
-    if (!currentMusic.playlist?.albumId || !('serviceWorker' in navigator)) return;
+    const albumId = currentMusic.playlist?.albumId;
+    if (!albumId || !('serviceWorker' in navigator)) return;
+    if (lastCachedAlbumIdRef.current === albumId) return;
+    lastCachedAlbumIdRef.current = albumId;
     const controller = navigator.serviceWorker.controller;
     if (!controller) return;
-    const audioUrls = (currentMusic.songs ?? []).map(s => s.url).filter(Boolean);
+    const audioUrls = (currentMusic.songs ?? [])
+      .map(s => s.url)
+      .filter(url => url && !String(url).toLowerCase().endsWith('.mp4'));
     const coverUrl = currentMusic.playlist.cover ?? null;
     controller.postMessage({ type: 'SET_ALBUM_CACHE', audioUrls, coverUrl });
   }, [currentMusic.playlist?.albumId]);
+
+  // Queue as virtual album: cache queue songs when added; revert to album when queue empties.
+  // Only triggers on new additions — shifts (song played) are intentionally ignored.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+    const controller = navigator.serviceWorker.controller;
+    if (!controller) return;
+
+    if (queue.length === 0) {
+      if (lastQueueSigRef.current === '') return;
+      lastQueueSigRef.current = '';
+      // Queue emptied — clear SW queue cache (SW will evict removed files)
+      controller.postMessage({ type: 'SET_QUEUE_CACHE', audioUrls: [] });
+      return;
+    }
+
+    // Only send SET_QUEUE_CACHE when new songs are added (not when shifted out)
+    const prevSet = new Set(lastQueueSigRef.current ? lastQueueSigRef.current.split('|') : []);
+    const hasNewSongs = queue.some(s => s.url && !prevSet.has(s.url));
+    if (!hasNewSongs) return;
+
+    lastQueueSigRef.current = queue.map(s => s.url).join('|');
+    const audioUrls = queue
+      .map(s => s.url)
+      .filter(url => url && !String(url).toLowerCase().endsWith('.mp4'));
+    if (audioUrls.length > 0)
+      controller.postMessage({ type: 'SET_QUEUE_CACHE', audioUrls });
+  }, [queue]); // currentMusic intentionally omitted — stale value is acceptable here
+
+  // Listen for cache progress reports from the SW
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+    const handler = (event) => {
+      const { data } = event;
+      if (data?.type === 'CACHE_CANCELLED') {
+        clearTimeout(dismissTimerRef.current);
+        setCacheProgress(null);
+        return;
+      }
+      if (data?.type !== 'CACHE_PROGRESS') return;
+      const { done, total } = data;
+      if (total === 0) return;
+      setCacheProgress({ done, total });
+      clearTimeout(dismissTimerRef.current);
+      if (done >= total) {
+        dismissTimerRef.current = setTimeout(() => setCacheProgress(null), 2000);
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', handler);
+    return () => {
+      navigator.serviceWorker.removeEventListener('message', handler);
+      clearTimeout(dismissTimerRef.current);
+    };
+  }, []);
 
   const play = () => {
     const media = getMediaElement();
@@ -278,6 +416,39 @@ export function Player() {
   }, [currentMusic.song?.url, videoAspectIndex, fitVideo]);
 
   return (<>
+    {cacheProgress && cacheProgress.total > 0 && (
+      <div className="fixed top-0 left-0 right-0 z-[1999] bg-zinc-900/95 backdrop-blur-sm border-b border-zinc-700 px-4 py-1.5">
+        <div className="flex items-center gap-2 text-xs text-zinc-300 max-w-lg mx-auto">
+          <span className="shrink-0 text-zinc-400">Caché</span>
+          <div className="flex-1 h-1.5 bg-zinc-700 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-green-500 transition-all duration-500"
+              style={{ width: `${Math.round((cacheProgress.done / cacheProgress.total) * 100)}%` }}
+            />
+          </div>
+          <span className="shrink-0 tabular-nums text-zinc-300">{cacheProgress.done}/{cacheProgress.total}</span>
+          {cacheProgress.done >= cacheProgress.total
+            ? <span className="shrink-0 text-green-400 text-[11px]">✓</span>
+            : (
+              <button
+                type="button"
+                className="shrink-0 w-4 h-4 rounded-full bg-zinc-700 hover:bg-red-800 flex items-center justify-center text-zinc-400 hover:text-white transition-colors"
+                title="Parar descarga"
+                onClick={() => {
+                  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                    navigator.serviceWorker.controller.postMessage({ type: 'STOP_CACHE' });
+                  }
+                  clearTimeout(dismissTimerRef.current);
+                  setCacheProgress(null);
+                }}
+              >
+                <span style={{ fontSize: '8px', lineHeight: 1 }}>✕</span>
+              </button>
+            )
+          }
+        </div>
+      </div>
+    )}
     {(isLoading || isTrackLoading) && (
       <div className="fixed inset-0 z-[1000] grid place-content-center bg-black/60">
         <div className="h-24 w-24 rounded-full border-8 border-zinc-700 border-t-green-500 animate-spin"></div>
@@ -491,8 +662,8 @@ export function Player() {
         />
       </div>
 
-      <div className="hidden md:grid place-content-center gap-4 min-w-0 overflow-hidden">
-        <div className="flex justify-center flex-col items-center">
+      <div className="hidden md:flex md:items-center md:justify-center gap-4 min-w-0 overflow-hidden">
+        <div className="flex justify-center flex-col items-center w-full">
           <PlayerControlButtonBar onSeekBack={() => seekBy(-5)} onSeekForward={() => seekBy(5)} />
           <PlayerSoundControl audio={getMediaRef()}/>
         </div>

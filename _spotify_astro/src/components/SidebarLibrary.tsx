@@ -1,30 +1,44 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Playlist } from "@/lib/types";
-import { fetchAllData } from "@/services/ApiService";
+import { fetchPlaylists } from "@/services/ApiService";
 
 interface Props {
-  playlists?: Playlist[];
   baseUrl: string;
 }
 
-const PAGE_SIZE = 120;
-
-export function SidebarLibrary({ playlists: initialPlaylists = [], baseUrl }: Props) {
-  const [playlists, setPlaylists] = useState<Playlist[]>(initialPlaylists);
-  const [visible, setVisible] = useState(PAGE_SIZE);
-
-  useEffect(() => {
-    fetchAllData()
-      .then(data => {
-        if (Array.isArray(data.playlists) && data.playlists.length > 0) setPlaylists(data.playlists);
-      })
-      .catch(() => {});
-  }, []);
+export function SidebarLibrary({ baseUrl }: Props) {
+  const [playlists, setPlaylists] = useState<Playlist[]>([]);
+  const [apiPage, setApiPage] = useState(0);
+  const [apiTotalPages, setApiTotalPages] = useState(1);
+  const [loadingPage, setLoadingPage] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
-  const items = useMemo(() => playlists.slice(0, visible), [playlists, visible]);
+  useEffect(() => {
+    setLoadingPage(true);
+    fetchPlaylists(1, 120)
+      .then(data => {
+        setPlaylists(data.playlists);
+        setApiPage(1);
+        setApiTotalPages(data.totalPages);
+        setLoadingPage(false);
+      })
+      .catch(() => setLoadingPage(false));
+  }, []);
+
+  const loadNextPage = useCallback(() => {
+    if (loadingPage || apiPage >= apiTotalPages) return;
+    setLoadingPage(true);
+    fetchPlaylists(apiPage + 1, 120)
+      .then(data => {
+        setPlaylists(prev => [...prev, ...data.playlists]);
+        setApiPage(data.page);
+        setApiTotalPages(data.totalPages);
+        setLoadingPage(false);
+      })
+      .catch(() => setLoadingPage(false));
+  }, [loadingPage, apiPage, apiTotalPages]);
 
   useEffect(() => {
     const match = window.location.pathname.match(/playlist\/(album-\d+)/);
@@ -35,27 +49,24 @@ export function SidebarLibrary({ playlists: initialPlaylists = [], baseUrl }: Pr
     if (!activeId) return;
     const el = document.querySelector(`[data-playlist-id="${activeId}"]`);
     if (el) (el as HTMLElement).scrollIntoView({ block: "center", behavior: "smooth" });
-  }, [activeId, visible]);
+  }, [activeId, playlists]);
 
   useEffect(() => {
     if (!rootRef.current || !sentinelRef.current) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        const [entry] = entries;
-        if (entry.isIntersecting) {
-          setVisible((v) => Math.min(v + PAGE_SIZE, playlists.length));
-        }
+        if (entries[0].isIntersecting) loadNextPage();
       },
       { root: rootRef.current, threshold: 0.1 }
     );
     observer.observe(sentinelRef.current);
     return () => observer.disconnect();
-  }, [playlists.length]);
+  }, [loadNextPage]);
 
   return (
     <div ref={rootRef} className="overflow-y-auto max-h-[68vh]">
       <ul>
-        {items.map((playlist) => (
+        {playlists.map((playlist) => (
           <li key={playlist.id}>
             <a
               href={`${baseUrl}playlist/${playlist.id}/`}
@@ -84,7 +95,7 @@ export function SidebarLibrary({ playlists: initialPlaylists = [], baseUrl }: Pr
         ))}
       </ul>
       <div ref={sentinelRef} className="py-3 text-center text-xs text-zinc-500">
-        {visible < playlists.length ? "Cargando más..." : "Fin de la biblioteca"}
+        {loadingPage ? "Cargando más..." : apiPage >= apiTotalPages ? "Fin de la biblioteca" : ""}
       </div>
     </div>
   );

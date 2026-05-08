@@ -45,9 +45,9 @@ export function PlaylistPage() {
       className="relative flex flex-col h-full bg-zinc-900 overflow-x-hidden bg-gradient-to-t from-50% from-zinc-900 via-zinc-900/80"
       style={{ backgroundColor: playlist.color?.accent ?? '#1f2937' }}
     >
-      <div className="md:hidden px-3 pt-3">
+      <div className="px-3 pt-3 md:px-6 md:pt-4">
         <button
-          className="text-zinc-300 text-sm"
+          className="text-zinc-300 text-sm hover:text-white transition-colors"
           onClick={() => history.back()}
           aria-label="Volver"
         >
