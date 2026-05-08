@@ -288,7 +288,11 @@ export function Player() {
       .map(s => s.url)
       .filter(url => url && !String(url).toLowerCase().endsWith('.mp4'));
     const coverUrl = currentMusic.playlist.cover ?? null;
-    controller.postMessage({ type: 'SET_ALBUM_CACHE', audioUrls, coverUrl });
+    const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : import.meta.env.BASE_URL + '/';
+    const playlistUrl = `${base}playlist/${currentMusic.playlist.id}/`;
+    localStorage.setItem('sw:cachedPlaylistId', currentMusic.playlist.id);
+    localStorage.setItem('sw:cachedPlaylistUrl', playlistUrl);
+    controller.postMessage({ type: 'SET_ALBUM_CACHE', audioUrls, coverUrl, playlistUrl });
   }, [currentMusic.playlist?.albumId]);
 
   // Queue as virtual album: cache queue songs when added; revert to album when queue empties.

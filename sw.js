@@ -1,11 +1,11 @@
 const SHELL_CACHE = 'player-shell-v4';
-const ALBUM_CACHE = 'player-album-v3';
+const ALBUM_CACHE = 'player-album-v4'; // album audio + cover only
+const QUEUE_CACHE = 'player-queue-v1'; // queue audio only (separate — never evicted by album changes)
 const API_CACHE   = 'player-api-v3';
 
-const SHELL_EXTS  = new Set(['html', 'js', 'css', 'woff', 'woff2', 'ttf', 'svg', 'json', 'webmanifest']);
-const AUDIO_EXTS  = new Set(['mp3', 'ogg', 'm4a', 'webm']); // mp4 excluded — video streams directly
-const VIDEO_EXTS  = new Set(['mp4']);
-const IMAGE_EXTS  = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif']);
+const AUDIO_EXTS = new Set(['mp3', 'ogg', 'm4a', 'webm']); // mp4 excluded — video streams directly
+const VIDEO_EXTS = new Set(['mp4']);
+const IMAGE_EXTS = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif']);
 
 const OFFLINE_HTML = `<!doctype html>
 <html lang="es">
@@ -33,11 +33,6 @@ const OFFLINE_HTML = `<!doctype html>
 // Generation counters — abort in-progress jobs when a newer request arrives.
 let cacheGeneration = 0;
 let queueCacheGen   = 0;
-
-// Module-level URL sets — track what belongs to album vs queue.
-// Used by eviction logic so album changes never delete queue files, and vice versa.
-let albumUrls = new Set();
-let queueUrls = new Set();
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -67,7 +62,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
       .then(keys => Promise.all(
-        keys.filter(k => k !== SHELL_CACHE && k !== ALBUM_CACHE && k !== API_CACHE)
+        keys.filter(k => k !== SHELL_CACHE && k !== ALBUM_CACHE && k !== QUEUE_CACHE && k !== API_CACHE)
             .map(k => caches.delete(k))
       ))
       .then(() => self.clients.claim())
@@ -98,14 +93,19 @@ self.addEventListener('fetch', (event) => {
   // Shell: all JS/CSS/HTML/fonts for the Astro app at /_audios/player/ and webfonts
   const isShell = !isAudio && !isVideo && !isImage &&
     (pathname.startsWith('/_audios/player/') || pathname.startsWith('/fonts/'));
-  const isApi   = pathname === '/_audios/api.php' || pathname === '/_audios/categories.json';
+  const isApi = pathname === '/_audios/api.php' || pathname === '/_audios/categories.json';
 
-  // Audio (mp3/ogg/m4a/webm): network-first, offline fallback with 206 range support for seeking
+  // Audio (mp3/ogg/m4a/webm): network-first, offline fallback with 206 range support for seeking.
+  // Checks ALBUM_CACHE first, then QUEUE_CACHE — both hold audio files independently.
   if (isAudio) {
     event.respondWith(
       fetch(request).catch(async () => {
-        const cache = await caches.open(ALBUM_CACHE);
-        const fullResp = await cache.match(new Request(request.url));
+        const [albumCache, queueCache] = await Promise.all([
+          caches.open(ALBUM_CACHE),
+          caches.open(QUEUE_CACHE),
+        ]);
+        const fullResp = (await albumCache.match(new Request(request.url)))
+                      ?? (await queueCache.match(new Request(request.url)));
         if (!fullResp) return new Response('Audio unavailable offline', { status: 503 });
 
         const rangeHeader = request.headers.get('Range');
@@ -116,15 +116,15 @@ self.addEventListener('fetch', (event) => {
         if (!m) return fullResp;
 
         const start = parseInt(m[1], 10);
-        const end = m[2] ? parseInt(m[2], 10) : blob.size - 1;
+        const end   = m[2] ? parseInt(m[2], 10) : blob.size - 1;
 
         return new Response(blob.slice(start, end + 1), {
           status: 206,
           headers: {
-            'Content-Range': `bytes ${start}-${end}/${blob.size}`,
+            'Content-Range':  `bytes ${start}-${end}/${blob.size}`,
             'Content-Length': String(end - start + 1),
-            'Content-Type': fullResp.headers.get('Content-Type') || 'audio/mpeg',
-            'Accept-Ranges': 'bytes',
+            'Content-Type':   fullResp.headers.get('Content-Type') || 'audio/mpeg',
+            'Accept-Ranges':  'bytes',
           },
         });
       })
@@ -148,7 +148,6 @@ self.addEventListener('fetch', (event) => {
 
   // App shell (JS/CSS/HTML/fonts): cache-first (stale-while-revalidate)
   // Serve instantly from cache; update in background when online.
-  // fetchAndCache properly awaits cache.put so the write completes before SW can terminate.
   if (isShell) {
     event.respondWith((async () => {
       const cache  = await caches.open(SHELL_CACHE);
@@ -167,6 +166,13 @@ self.addEventListener('fetch', (event) => {
       try {
         return await fetchAndCache();
       } catch {
+        // Page requests (no file extension) → serve index so the app shell stays alive offline.
+        // Asset requests (CSS/JS) → serve offline HTML (browser ignores bad asset responses anyway).
+        const isPageUrl = pathname.endsWith('/') || pathname.endsWith('.html') || !pathname.includes('.');
+        if (isPageUrl) {
+          const index = await cache.match('/_audios/player/');
+          if (index) return index;
+        }
         return new Response(OFFLINE_HTML, { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
       }
     })());
@@ -197,13 +203,12 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Navigation catch-all: any navigation within scope not handled above (e.g. /_audios/)
-  // Without this, the browser falls through to a real network request → ERR_INTERNET_DISCONNECTED offline.
   if (request.mode === 'navigate') {
     event.respondWith((async () => {
       const cache = await caches.open(SHELL_CACHE);
       try {
         const r = await fetch(request);
-        if (r.ok) await cache.put(request, r.clone()); // awaited — write completes before returning
+        if (r.ok) await cache.put(request, r.clone());
         return r;
       } catch {
         return (await cache.match(request))
@@ -223,8 +228,9 @@ const broadcastAll = async (msg) => {
 };
 
 // ─── Message handlers ──────────────────────────────────────────────────────
-// SET_ALBUM_CACHE: cache current album; evicts old album files but KEEPS queue files.
-// SET_QUEUE_CACHE: cache queue songs independently; evicts removed queue files but KEEPS album files.
+// SET_ALBUM_CACHE: check if album is cached; if not, clear ALBUM_CACHE entirely and download it.
+//   Queue lives in QUEUE_CACHE — never touched by album logic.
+// SET_QUEUE_CACHE: evict removed queue files from QUEUE_CACHE, download new ones.
 // STOP_CACHE: aborts any in-progress album caching job.
 self.addEventListener('message', async (event) => {
   const type = event.data?.type;
@@ -238,32 +244,33 @@ self.addEventListener('message', async (event) => {
   // ── SET_ALBUM_CACHE ───────────────────────────────────────────────────────
   if (type === 'SET_ALBUM_CACHE') {
     const myGen = ++cacheGeneration;
-    const { audioUrls = [], coverUrl = null } = event.data;
+    const { audioUrls = [], coverUrl = null, playlistUrl = null } = event.data;
 
-    const audioOnly  = audioUrls.filter(url => !String(url).toLowerCase().endsWith('.mp4'));
-    const newAlbum   = new Set([...audioOnly, ...(coverUrl ? [coverUrl] : [])]);
-    const toCache    = [...newAlbum];
+    // Cache the playlist page HTML so navigating to it works offline.
+    if (playlistUrl) {
+      try {
+        const shellCache = await caches.open(SHELL_CACHE);
+        if (!await shellCache.match(playlistUrl)) {
+          const resp = await fetch(playlistUrl);
+          if (resp.ok) await shellCache.put(playlistUrl, resp);
+        }
+      } catch { /* silent — may fail offline */ }
+    }
+
+    const audioOnly = audioUrls.filter(url => !String(url).toLowerCase().endsWith('.mp4'));
+    const toCache   = [...new Set([...audioOnly, ...(coverUrl ? [coverUrl] : [])])];
 
     const cache = await caches.open(ALBUM_CACHE);
 
-    // Early-exit if everything already cached — still update albumUrls tracking.
+    // If everything is already cached, nothing to do.
     if (toCache.length > 0) {
       const checks = await Promise.all(toCache.map(u => cache.match(u)));
-      if (checks.every(Boolean)) {
-        albumUrls = newAlbum;
-        return;
-      }
+      if (checks.every(Boolean)) return;
     }
 
-    // Evict OLD album files — but NEVER evict queue files.
-    const keys = await cache.keys();
-    await Promise.all(keys.map(req => {
-      if (newAlbum.has(req.url)) return null;   // keep: new album file
-      if (queueUrls.has(req.url)) return null;  // keep: queue file
-      return cache.delete(req);                 // evict: old album file
-    }));
-
-    albumUrls = newAlbum;
+    // Not fully cached: clear ALBUM_CACHE entirely (queue is safe in QUEUE_CACHE).
+    const existing = await cache.keys();
+    await Promise.all(existing.map(req => cache.delete(req)));
 
     const total = toCache.length;
     let done = 0;
@@ -275,10 +282,8 @@ self.addEventListener('message', async (event) => {
         return;
       }
       try {
-        if (!await cache.match(url)) {
-          const resp = await fetch(url);
-          if (resp.ok) await cache.put(url, resp);
-        }
+        const resp = await fetch(url);
+        if (resp.ok) await cache.put(url, resp);
       } catch { /* silent per-file error */ }
       done++;
       if (cacheGeneration === myGen) await broadcastAll({ type: 'CACHE_PROGRESS', done, total });
@@ -292,20 +297,15 @@ self.addEventListener('message', async (event) => {
     const { audioUrls = [] } = event.data;
 
     const newQueue = new Set(audioUrls.filter(url => !String(url).toLowerCase().endsWith('.mp4')));
-    const cache    = await caches.open(ALBUM_CACHE);
+    const cache    = await caches.open(QUEUE_CACHE);
 
-    // Evict files removed from queue — but NEVER evict album files.
+    // Evict files no longer in queue.
     const keys = await cache.keys();
-    await Promise.all(keys.map(req => {
-      if (newQueue.has(req.url)) return null;   // keep: still in queue
-      if (albumUrls.has(req.url)) return null;  // keep: album file
-      if (queueUrls.has(req.url)) return cache.delete(req); // evict: removed from queue
-      return null;
-    }));
+    await Promise.all(keys.map(req =>
+      newQueue.has(req.url) ? null : cache.delete(req)
+    ));
 
-    queueUrls = newQueue;
-
-    // Download new queue files (silent, no progress bar)
+    // Download new queue files (silent, no progress bar).
     for (const url of newQueue) {
       if (queueCacheGen !== myGen) return; // newer SET_QUEUE_CACHE arrived
       try {

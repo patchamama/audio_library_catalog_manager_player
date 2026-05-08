@@ -1,5 +1,5 @@
 const PHP_API        = '/_audios/api.php';
-const SW_ALBUM_CACHE = 'player-album-v3';
+const SW_ALBUM_CACHE = 'player-album-v4';
 const SW_API_CACHE   = 'player-api-v3';
 
 // Single in-flight promise shared across all callers — prevents duplicate HTTP requests

@@ -27,6 +27,24 @@ export function SidebarLibrary({ baseUrl }: Props) {
       .catch(() => setLoadingPage(false));
   }, []);
 
+  // Reload when connection is restored (OfflineBanner dispatches 'online' event via probe)
+  useEffect(() => {
+    const handleOnline = () => {
+      if (playlists.length > 0) return; // already loaded
+      setLoadingPage(true);
+      fetchPlaylists(1, 120)
+        .then(data => {
+          setPlaylists(data.playlists);
+          setApiPage(1);
+          setApiTotalPages(data.totalPages);
+          setLoadingPage(false);
+        })
+        .catch(() => setLoadingPage(false));
+    };
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, [playlists.length]);
+
   const loadNextPage = useCallback(() => {
     if (loadingPage || apiPage >= apiTotalPages) return;
     setLoadingPage(true);

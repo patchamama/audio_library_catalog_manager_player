@@ -14,22 +14,26 @@ export const PlayerSoundControl = ({ audio }) => {
     }
   }, [audio])
 
-  const formatTime = time => {
-    if (time == null) return `0:00`
-
-    const seconds = Math.floor(time % 60)
-    const minutes = Math.floor(time / 60)
-
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`
-  }
-
   const durationRaw = audio?.current?.duration ?? 0
   const duration = Number.isFinite(durationRaw) && durationRaw > 0 ? durationRaw : 0
   const safeCurrentTime = Math.max(0, Math.min(currentTime || 0, duration || Math.max(currentTime || 0, 0)))
 
+  const showHours = duration > 60
+
+  const formatTime = time => {
+    if (time == null) return showHours ? '0:00:00' : '0:00'
+    const h = Math.floor(time / 3600)
+    const m = Math.floor((time % 3600) / 60)
+    const s = Math.floor(time % 60)
+    if (showHours) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+    return `${m}:${s.toString().padStart(2, '0')}`
+  }
+
+  const timeWidth = showHours ? 'w-16' : 'w-12'
+
   return (
     <div className="flex gap-x-2 md:gap-x-3 text-xs pt-1 md:pt-2 items-center w-full px-2 md:px-0">
-      <span className="opacity-50 w-12 text-right">{formatTime(currentTime)}</span>
+      <span className={`opacity-50 ${timeWidth} text-right`}>{formatTime(currentTime)}</span>
 
       <Slider
         value={[safeCurrentTime]}
@@ -44,8 +48,8 @@ export const PlayerSoundControl = ({ audio }) => {
         }}
       />
 
-      <span className="opacity-50 w-12">
-        {duration ? formatTime(duration) : '0:00'}
+      <span className={`opacity-50 ${timeWidth}`}>
+        {duration ? formatTime(duration) : (showHours ? '0:00:00' : '0:00')}
       </span>
     </div>
   )

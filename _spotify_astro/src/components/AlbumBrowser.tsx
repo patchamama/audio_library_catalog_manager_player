@@ -4,6 +4,7 @@ import { usePlayerStore } from "@/store/playerStore";
 import { normalizeSongMediaType } from "@/lib/media";
 import { fetchAllData, fetchPlaylists, getPlaylistsFromSwCache, getCachedAlbumInfo } from "@/services/ApiService";
 import { DEFAULT_CATEGORIES, type Category } from "@/lib/categories";
+import { probeConnectivity } from "@/components/OfflineBanner";
 
 const CACHE_COVER = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><rect width="200" height="200" rx="12" fill="#0f172a"/><path d="M60 110 A32 32 0 0 1 88 76 A42 42 0 0 1 156 104 A26 26 0 0 1 150 152 L60 152 A32 32 0 0 1 60 110Z" fill="none" stroke="#22c55e" stroke-width="7" stroke-linejoin="round"/><line x1="100" y1="102" x2="100" y2="145" stroke="#4ade80" stroke-width="7" stroke-linecap="round"/><polyline points="83,132 100,150 117,132" fill="none" stroke="#4ade80" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/><line x1="80" y1="158" x2="120" y2="158" stroke="#4ade80" stroke-width="5" stroke-linecap="round"/></svg>')}`;
 
@@ -459,6 +460,8 @@ export function AlbumBrowser({ baseUrl }: Props) {
       const section = detail?.section;
       if (section === "home" || section === "search" || section === "library" || section === "queue") {
         setMobileSection(section);
+        // Probe connectivity — if online event fires, handleOnline will reload data
+        if (section === "home" || section === "library") probeConnectivity();
       }
     };
     document.addEventListener("mobile-nav-select", onMobileSelect);
