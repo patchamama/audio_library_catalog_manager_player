@@ -15,6 +15,8 @@ export function Player() {
   const currentMusic = usePlayerStore(state => state.currentMusic);
   const isPlaying = usePlayerStore(state => state.isPlaying);
   const isTrackLoading = usePlayerStore(state => state.isTrackLoading);
+  const shuffleMode = usePlayerStore(state => state.shuffleMode);
+  const repeatAllMode = usePlayerStore(state => state.repeatAllMode);
   const volume = usePlayerStore(state => state.volume);
   const setCurrentMusic = usePlayerStore(state => state.setCurrentMusic);
   const setVolume = usePlayerStore(state => state.setVolume);
@@ -25,7 +27,10 @@ export function Player() {
   const audioRef = useRef();
   const videoRef = useRef();
   const prevSongUrlRef = useRef(null);
+  const prevSongRef = useRef(null);
   const prevSongDataRef = useRef(null);
+  const playHistoryRef = useRef([]);
+  const isGoingBackRef = useRef(false);
   const maxListenedPercentRef = useRef(0);
   const dismissTimerRef = useRef(null);
   const isMobileRef = useRef(false);
@@ -183,6 +188,18 @@ export function Player() {
     // Skip to avoid resetting the audio element and interrupting playback.
     if (song.url === prevSongUrlRef.current) return;
 
+    // Build playback history for "previous" navigation.
+    if (prevSongRef.current?.url && prevSongRef.current.url !== song.url) {
+      if (isGoingBackRef.current) {
+        isGoingBackRef.current = false;
+      } else {
+        playHistoryRef.current.push(prevSongRef.current);
+        if (playHistoryRef.current.length > 200) {
+          playHistoryRef.current.splice(0, playHistoryRef.current.length - 200);
+        }
+      }
+    }
+
     // Save previous song to history
     if (prevSongDataRef.current) {
       try {
@@ -230,6 +247,7 @@ export function Player() {
       image: song.image ?? '',
     };
 
+    prevSongRef.current = song;
     prevSongUrlRef.current = song.url;
 
     // Track listened albums in localStorage
@@ -370,9 +388,33 @@ export function Player() {
       setCurrentMusic({...currentMusic, song: normalizeSongMediaType(queuedSong)});
       return;
     }
+    if (shuffleMode && currentMusic.songs.length > 1) {
+      const currentUrl = currentMusic.song?.url;
+      const candidates = currentMusic.songs.filter(s => s.url !== currentUrl);
+      const pick = candidates[Math.floor(Math.random() * candidates.length)];
+      if (pick) {
+        setCurrentMusic({...currentMusic, song: normalizeSongMediaType(pick)});
+        return;
+      }
+    }
     const nextSong = getNextSong();
     if (nextSong) {
       setCurrentMusic({...currentMusic, song: normalizeSongMediaType(nextSong)});
+      return;
+    }
+    if (repeatAllMode && currentMusic.songs.length > 0) {
+      setCurrentMusic({...currentMusic, song: normalizeSongMediaType(currentMusic.songs[0])});
+    }
+  }
+
+  function onPrevSongFromHistory() {
+    const currentUrl = currentMusic.song?.url;
+    while (playHistoryRef.current.length > 0) {
+      const prev = playHistoryRef.current.pop();
+      if (!prev?.url || prev.url === currentUrl) continue;
+      isGoingBackRef.current = true;
+      setCurrentMusic({ ...currentMusic, song: normalizeSongMediaType(prev) });
+      return;
     }
   }
 
@@ -439,9 +481,17 @@ export function Player() {
                 className="shrink-0 w-4 h-4 rounded-full bg-zinc-700 hover:bg-red-800 flex items-center justify-center text-zinc-400 hover:text-white transition-colors"
                 title="Parar descarga"
                 onClick={() => {
-                  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-                    navigator.serviceWorker.controller.postMessage({ type: 'STOP_CACHE' });
+                  if ('serviceWorker' in navigator) {
+                    const msg = { type: 'STOP_CACHE' };
+                    if (navigator.serviceWorker.controller) {
+                      navigator.serviceWorker.controller.postMessage(msg);
+                    } else {
+                      navigator.serviceWorker.getRegistration('/_audios/').then(reg => {
+                        reg?.active?.postMessage(msg);
+                      }).catch(() => {});
+                    }
                   }
+                  lastCachedAlbumIdRef.current = null;
                   clearTimeout(dismissTimerRef.current);
                   setCacheProgress(null);
                 }}
@@ -626,7 +676,7 @@ export function Player() {
               />
             </button>
             <div className="min-w-0 flex-1 overflow-hidden">
-              <div className="mobile-marquee text-xs text-zinc-200 whitespace-nowrap">
+              <div className="mobile-marquee text-xs text-green-300 font-bold whitespace-nowrap">
                 {(currentMusic.song?.title || "Sin reproducción")} · {(currentMusic.song?.artists?.join(", ") || "Sin autor")}
               </div>
               <div className="text-[10px] text-zinc-500">
@@ -641,11 +691,18 @@ export function Player() {
               -5
             </button>
             <button
-              className="w-8 h-8 rounded-full bg-white text-black grid place-content-center shrink-0"
+              className="relative w-10 h-10 rounded overflow-hidden shrink-0"
               onClick={() => setIsPlaying(!isPlaying)}
               title={isPlaying ? "Pausar" : "Reproducir"}
             >
-              {isPlaying ? "❚❚" : "▶"}
+              <img
+                src={currentMusic.song?.image || "/_audios/player/default-cover.svg"}
+                alt={currentMusic.song?.title || "cover"}
+                className="w-full h-full object-cover"
+              />
+              <span className="absolute inset-0 bg-black/45 text-white grid place-content-center text-xl font-bold">
+                {isPlaying ? "❚❚" : "▶"}
+              </span>
             </button>
             <button
               className="w-7 h-7 rounded-full bg-zinc-700 text-white grid place-content-center shrink-0 text-[10px]"
@@ -668,7 +725,7 @@ export function Player() {
 
       <div className="hidden md:flex md:items-center md:justify-center gap-4 min-w-0 overflow-hidden">
         <div className="flex justify-center flex-col items-center w-full">
-          <PlayerControlButtonBar onSeekBack={() => seekBy(-5)} onSeekForward={() => seekBy(5)} />
+          <PlayerControlButtonBar onSeekBack={() => seekBy(-5)} onSeekForward={() => seekBy(5)} onNextSong={onNextSong} onPrevSong={onPrevSongFromHistory} />
           <PlayerSoundControl audio={getMediaRef()}/>
         </div>
       </div>

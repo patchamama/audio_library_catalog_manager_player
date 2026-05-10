@@ -133,30 +133,41 @@ export const MusicsTable = ({songs}: Props) => {
     </div>
     {isMobile ? (
       <div className="space-y-2">
-        {filteredSongs.map((song, index) => (
-          <div key={`${song.albumId}-${song.id}`} className="flex items-center gap-2 rounded-md bg-zinc-800/60 px-2 py-2">
+        {filteredSongs.map((song, index) => {
+          const isCurrentSongBoolean = currentSong?.id === song.id && currentPlaylist?.albumId === song.albumId;
+          return (
+          <div
+            key={`${song.albumId}-${song.id}`}
+            className={`flex items-center gap-2 rounded-md px-2 py-2 cursor-pointer active:bg-zinc-700/70 ${
+              isCurrentSongBoolean ? "bg-green-900/35 ring-1 ring-green-500/40" : "bg-zinc-800/60"
+            }`}
+            onClick={() => playSong(song)}
+          >
             <div className={`w-5 text-xs text-right shrink-0 ${cachedUrls.has(song.url) ? 'bg-green-500/20 text-green-400 rounded font-semibold' : 'text-zinc-400'}`}>{index + 1}</div>
             <div className="relative w-10 h-10 shrink-0">
               <img src={song.image} alt={song.title} className="w-10 h-10 rounded object-cover" />
-              {currentSong?.id === song.id && currentPlaylist?.albumId === song.albumId && (
+              {isCurrentSongBoolean && (
                 <div className="absolute inset-0 bg-black/40 rounded flex items-center justify-center">
                   <span className="text-green-400 text-sm">{isPlaying ? '▶' : '⏸'}</span>
                 </div>
               )}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-sm text-zinc-100 truncate" onClick={() => playSong(song)}>{song.title}</div>
+              <div className="text-sm text-zinc-100 truncate">{song.title}</div>
               <div className="text-[11px] text-zinc-400 truncate">{song.artists.join(", ")} · {durations[song.url] ?? song.duration}</div>
             </div>
             <button
               className="text-xs bg-zinc-700 hover:bg-zinc-600 rounded px-2 py-1"
-              onClick={() => addToQueue(normalizeSongMediaType(song))}
+              onClick={(e) => {
+                e.stopPropagation();
+                addToQueue(normalizeSongMediaType(song));
+              }}
               title="Agregar a cola"
             >
               {queueSet.has(`${song.albumId}-${song.id}-${song.url}`) ? "✓" : "＋"}
             </button>
           </div>
-        ))}
+        )})}
       </div>
     ) : (
     <table className="table-auto text-left min-w-full divide-y divide-gray-500/20">
@@ -175,7 +186,12 @@ export const MusicsTable = ({songs}: Props) => {
             const isCurrentSongBoolean = currentSong?.id === song.id && currentPlaylist?.albumId === song.albumId;
             return (
               <tr
-                key={`${song.albumId}-${song.id}`} className="text-gray-300 border-spacing-0 text-sm font-light hover:bg-white/10 overflow-hidden transition duration-300 group">
+                key={`${song.albumId}-${song.id}`}
+                className={`text-gray-300 border-spacing-0 text-sm font-light overflow-hidden transition duration-300 group cursor-pointer ${
+                  isCurrentSongBoolean ? "bg-green-900/30" : "hover:bg-white/10"
+                }`}
+                onClick={() => playSong(song)}
+              >
                 <td className="relative px-4 py-2 rounded-tl-lg rounded-bl-lg w-5">
                   <span className={`absolute top-5 opacity-100 transition-all group-hover:opacity-0 ${cachedUrls.has(song.url) ? 'bg-green-500/20 text-green-400 rounded px-0.5 text-[11px] font-semibold' : ''}`}>{index + 1}</span>
                   <div className="absolute top-5 opacity-0 transition-all group-hover:opacity-100">
@@ -208,7 +224,10 @@ export const MusicsTable = ({songs}: Props) => {
                     <span>{durations[song.url] ?? song.duration}</span>
                     <button
                       className="text-xs bg-zinc-800 hover:bg-zinc-700 rounded px-2 py-1"
-                      onClick={() => addToQueue(normalizeSongMediaType(song))}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        addToQueue(normalizeSongMediaType(song));
+                      }}
                       title="Agregar a cola"
                     >
                       {queueSet.has(`${song.albumId}-${song.id}-${song.url}`) ? "✓" : "➕"}

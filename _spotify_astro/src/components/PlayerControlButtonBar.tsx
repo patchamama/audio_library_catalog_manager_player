@@ -5,9 +5,11 @@ import { usePlayerStore } from "@/store/playerStore";
 interface Props {
   onSeekBack?: () => void;
   onSeekForward?: () => void;
+  onNextSong?: () => void;
+  onPrevSong?: () => void;
 }
 
-export function PlayerControlButtonBar({ onSeekBack, onSeekForward }: Props) {
+export function PlayerControlButtonBar({ onSeekBack, onSeekForward, onNextSong, onPrevSong }: Props) {
   const currentMusic = usePlayerStore(state => state.currentMusic);
   const isPlaying = usePlayerStore(state => state.isPlaying);
   const setIsPlaying = usePlayerStore(state => state.setIsPlaying);
@@ -21,14 +23,14 @@ export function PlayerControlButtonBar({ onSeekBack, onSeekForward }: Props) {
   }
 
 
-  const onNextSong = () => {
+  const onNextSongDefault = () => {
     const nextSong = getNextSong();
     if (nextSong) {
       setCurrentMusic({ ...currentMusic, song: nextSong });
     }
   }
 
-  const onPrevSong = () => {
+  const onPrevSongDefault = () => {
     const prevSong = getPreviousSong();
     if (prevSong) {
       setCurrentMusic({ ...currentMusic, song: prevSong });
@@ -40,13 +42,13 @@ export function PlayerControlButtonBar({ onSeekBack, onSeekForward }: Props) {
       <button className="hover:scale-110 text-xs opacity-90" onClick={onSeekBack} title="Retroceder 5 segundos">
         -5s
       </button>
-      <button className="hover:scale-110" onClick={onPrevSong} title="Previous song">
+      <button className="hover:scale-110" onClick={onPrevSong ?? onPrevSongDefault} title="Previous song">
         <Prev/>
       </button>
       <button className="bg-white text-black rounded-full p-2 hover:scale-110" onClick={onPlayPause}>
         {isPlaying ? <Pause/> : <Play/>}
       </button>
-      <button className="hover:scale-110" onClick={onNextSong} title="Next song">
+      <button className="hover:scale-110" onClick={onNextSong ?? onNextSongDefault} title="Next song">
         <Next/>
       </button>
       <button className="hover:scale-110 text-xs opacity-90" onClick={onSeekForward} title="Adelantar 5 segundos">

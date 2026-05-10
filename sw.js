@@ -33,6 +33,8 @@ const OFFLINE_HTML = `<!doctype html>
 // Generation counters — abort in-progress jobs when a newer request arrives.
 let cacheGeneration = 0;
 let queueCacheGen   = 0;
+let albumCacheAbortController = null;
+let queueCacheAbortController = null;
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -238,12 +240,31 @@ self.addEventListener('message', async (event) => {
   // ── STOP_CACHE ────────────────────────────────────────────────────────────
   if (type === 'STOP_CACHE') {
     cacheGeneration++;
+    queueCacheGen++;
+    if (albumCacheAbortController) {
+      try { albumCacheAbortController.abort(); } catch {}
+      albumCacheAbortController = null;
+    }
+    if (queueCacheAbortController) {
+      try { queueCacheAbortController.abort(); } catch {}
+      queueCacheAbortController = null;
+    }
+    await broadcastAll({ type: 'CACHE_CANCELLED' });
     return;
   }
 
   // ── SET_ALBUM_CACHE ───────────────────────────────────────────────────────
   if (type === 'SET_ALBUM_CACHE') {
-    const myGen = ++cacheGeneration;
+    // New album request always cancels any previous in-flight album caching job.
+    cacheGeneration++;
+    if (albumCacheAbortController) {
+      try { albumCacheAbortController.abort(); } catch {}
+      albumCacheAbortController = null;
+      await broadcastAll({ type: 'CACHE_CANCELLED' });
+    }
+    const myGen = cacheGeneration;
+    const abortController = new AbortController();
+    albumCacheAbortController = abortController;
     const { audioUrls = [], coverUrl = null, playlistUrl = null } = event.data;
 
     // Cache the playlist page HTML so navigating to it works offline.
@@ -262,13 +283,7 @@ self.addEventListener('message', async (event) => {
 
     const cache = await caches.open(ALBUM_CACHE);
 
-    // If everything is already cached, nothing to do.
-    if (toCache.length > 0) {
-      const checks = await Promise.all(toCache.map(u => cache.match(u)));
-      if (checks.every(Boolean)) return;
-    }
-
-    // Not fully cached: clear ALBUM_CACHE entirely (queue is safe in QUEUE_CACHE).
+    // Always clear previous album cache before starting the new download.
     const existing = await cache.keys();
     await Promise.all(existing.map(req => cache.delete(req)));
 
@@ -282,18 +297,37 @@ self.addEventListener('message', async (event) => {
         return;
       }
       try {
-        const resp = await fetch(url);
+        const resp = await fetch(url, { signal: abortController.signal });
+        if (cacheGeneration !== myGen || abortController.signal.aborted) {
+          await broadcastAll({ type: 'CACHE_CANCELLED' });
+          return;
+        }
         if (resp.ok) await cache.put(url, resp);
-      } catch { /* silent per-file error */ }
+      } catch (err) {
+        // Abort = cancelled by a newer album request; stop immediately.
+        if (abortController.signal.aborted || (err && err.name === 'AbortError')) {
+          await broadcastAll({ type: 'CACHE_CANCELLED' });
+          return;
+        }
+        /* silent per-file network error */
+      }
       done++;
       if (cacheGeneration === myGen) await broadcastAll({ type: 'CACHE_PROGRESS', done, total });
     }
+    if (cacheGeneration === myGen) albumCacheAbortController = null;
     return;
   }
 
   // ── SET_QUEUE_CACHE ───────────────────────────────────────────────────────
   if (type === 'SET_QUEUE_CACHE') {
-    const myGen = ++queueCacheGen;
+    queueCacheGen++;
+    if (queueCacheAbortController) {
+      try { queueCacheAbortController.abort(); } catch {}
+      queueCacheAbortController = null;
+    }
+    const myGen = queueCacheGen;
+    const abortController = new AbortController();
+    queueCacheAbortController = abortController;
     const { audioUrls = [] } = event.data;
 
     const newQueue = new Set(audioUrls.filter(url => !String(url).toLowerCase().endsWith('.mp4')));
@@ -310,11 +344,16 @@ self.addEventListener('message', async (event) => {
       if (queueCacheGen !== myGen) return; // newer SET_QUEUE_CACHE arrived
       try {
         if (!await cache.match(url)) {
-          const resp = await fetch(url);
+          const resp = await fetch(url, { signal: abortController.signal });
+          if (queueCacheGen !== myGen || abortController.signal.aborted) return;
           if (resp.ok) await cache.put(url, resp);
         }
-      } catch { /* silent */ }
+      } catch (err) {
+        if (abortController.signal.aborted || (err && err.name === 'AbortError')) return;
+        /* silent */
+      }
     }
+    if (queueCacheGen === myGen) queueCacheAbortController = null;
     return;
   }
 });

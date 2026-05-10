@@ -17,6 +17,23 @@ $IGNORE = [
 ];
 $COVER_CANDIDATES = ['cover.jpg', 'cover.jpeg', 'cover.png', 'folder.jpg', 'Folder.jpg', 'AlbumArtSmall.jpg'];
 $AUDIO_EXTS = ['.mp3', '.mp4'];
+$CATEGORIES = [
+    ['id' => 'chess', 'label' => 'Ajedrez', 'icon' => '♟', 'terms' => ['chess', 'ajedrez']],
+    ['id' => 'audible', 'label' => 'Audible', 'icon' => '🎧', 'terms' => ['audible']],
+    ['id' => 'novelas', 'label' => 'Novelas', 'icon' => '📖', 'terms' => [
+        'padura', 'vargas llosa', 'garcia marquez', 'garcía márquez', 'marquez',
+        'cervantes', 'shakespeare', 'dickens', 'tolstoy', 'dostoevsky', 'hugo', 'flaubert',
+        'balzac', 'hemingway', 'fitzgerald', 'orwell', 'kafka', 'joyce', 'proust', 'woolf',
+        'faulkner', 'camus', 'eco', 'murakami', 'rowling', 'coelho', 'austen', 'twain',
+        'steinbeck', 'saramago', 'cabrera infante', 'posteguillo', 'rivera de la cruz',
+    ]],
+    ['id' => 'ciclismo', 'label' => 'Ciclismo', 'icon' => '🚴', 'terms' => ['ciclismo']],
+    ['id' => 'historia', 'label' => 'Historia', 'icon' => '🏛', 'terms' => ['historia', 'diana uribe']],
+    ['id' => 'youtube', 'label' => 'Youtube', 'icon' => '▶', 'terms' => ['mp3-youtube']],
+    ['id' => 'tts', 'label' => 'TTS', 'icon' => '🔊', 'terms' => ['tts']],
+    ['id' => 'deutsch', 'label' => 'Deutsch', 'icon' => '🇩🇪', 'terms' => ['deutsch', 'german', 'aleman', 'alemán']],
+    ['id' => 'english', 'label' => 'English', 'icon' => '🇬🇧', 'terms' => ['charlysway', 'englisch', 'english']],
+];
 
 $COLORS = [
     ['accent' => '#da2735', 'dark' => '#7f1d1d'],
@@ -81,6 +98,13 @@ function splitAuthorTitle(string $name): array {
 
 function stripExt(string $fileName): string {
     return preg_replace('/\.(mp3|mp4|m4a|webm|ogg)$/i', '', $fileName);
+}
+
+function normalizeSearch(string $str): string {
+    $str = mb_strtolower($str, 'UTF-8');
+    $from = ['á','é','í','ó','ú','ü','ñ','à','è','ì','ò','ù','â','ê','î','ô','û','ä','ë','ï','ö','ã','õ','ç','ý'];
+    $to   = ['a','e','i','o','u','u','n','a','e','i','o','u','a','e','i','o','u','a','e','i','o','a','o','c','y'];
+    return str_replace($from, $to, $str);
 }
 
 // Build playlists-only array (no songs) from filesystem.
@@ -204,6 +228,54 @@ if (isset($_GET['albumId'])) {
 }
 
 $playlists = getPlaylistsCached();
+
+// GET ?categories=1 — returns server category filters
+if (isset($_GET['categories'])) {
+    echo json_encode(['categories' => $CATEGORIES], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+// GET ?search=q — search playlists by album/author and songs by song title only
+$search = isset($_GET['search']) ? trim($_GET['search']) : null;
+if ($search !== null && strlen($search) > 0) {
+    $normQuery = normalizeSearch($search);
+    $tokens = array_values(array_filter(preg_split('/\s+/u', $normQuery)));
+
+    $matchedPlaylists = [];
+    foreach ($playlists as $p) {
+        $haystack = normalizeSearch(
+            $p['folderName'] . ' ' . $p['title'] . ' ' . implode(' ', $p['artists'])
+        );
+        $match = true;
+        foreach ($tokens as $t) {
+            if (mb_strpos($haystack, $t) === false) { $match = false; break; }
+        }
+        if ($match) $matchedPlaylists[] = $p;
+    }
+
+    $matchedSongs = [];
+    foreach ($playlists as $p) {
+        $albumSongs = buildSongsForAlbum(
+            $p['folderName'], (int)$p['albumId'],
+            $p['title'], $p['artists'][0] ?? 'Unknown', $p['cover']
+        );
+        foreach ($albumSongs as $s) {
+            $songHaystack = normalizeSearch($s['title']);
+            $songMatch = true;
+            foreach ($tokens as $t) {
+                if (mb_strpos($songHaystack, $t) === false) { $songMatch = false; break; }
+            }
+            if ($songMatch) $matchedSongs[] = $s;
+        }
+    }
+
+    echo json_encode([
+        'playlists' => array_values($matchedPlaylists),
+        'songs'     => $matchedSongs,
+        'query'     => $search,
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
 
 // GET ?albumId=X — single album + its songs
 if ($albumId !== null) {

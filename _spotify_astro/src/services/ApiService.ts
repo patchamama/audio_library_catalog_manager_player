@@ -27,6 +27,11 @@ export function fetchPlaylists(page = 1, limit = 48): Promise<PlaylistPage> {
     .then(r => { if (!r.ok) throw new Error('PHP API unavailable'); return r.json(); });
 }
 
+export function fetchSearch(query: string): Promise<{ playlists: any[]; songs: any[] }> {
+  return fetch(`${PHP_API}?search=${encodeURIComponent(query.trim())}`)
+    .then(r => { if (!r.ok) throw new Error('PHP API unavailable'); return r.json(); });
+}
+
 function parsePlaylistData(data: any, playListId: number | string) {
   const playlist = data.playlists
     ? data.playlists.find(

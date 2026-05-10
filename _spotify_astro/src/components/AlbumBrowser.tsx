@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Playlist, Song } from "@/lib/types";
 import { usePlayerStore } from "@/store/playerStore";
 import { normalizeSongMediaType } from "@/lib/media";
-import { fetchAllData, fetchPlaylists, getPlaylistsFromSwCache, getCachedAlbumInfo } from "@/services/ApiService";
+import { fetchSearch, fetchPlaylists, getPlaylistsFromSwCache, getCachedAlbumInfo } from "@/services/ApiService";
 import { DEFAULT_CATEGORIES, type Category } from "@/lib/categories";
 import { probeConnectivity } from "@/components/OfflineBanner";
 
@@ -91,11 +91,12 @@ function albumMatchesCategory(haystack: string, cat: Category): boolean {
 
 export function AlbumBrowser({ baseUrl }: Props) {
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
-  const [songs, setSongs] = useState<Song[]>([]);
   const [apiPage, setApiPage] = useState(0);
   const [apiTotalPages, setApiTotalPages] = useState(1);
   const [loadingPage, setLoadingPage] = useState(false);
-  const [songsLoaded, setSongsLoaded] = useState(false);
+  const [backendSearch, setBackendSearch] = useState<{ query: string; playlists: Playlist[]; songs: Song[] } | null>(null);
+  const [desktopSearchFetching, setDesktopSearchFetching] = useState(false);
+  const [mobileSearchFetching, setMobileSearchFetching] = useState(false);
 
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [noCacheOffline, setNoCacheOffline] = useState(false);
@@ -179,7 +180,6 @@ export function AlbumBrowser({ baseUrl }: Props) {
   const [mobileInput, setMobileInput] = useState("");
   const [albumQuery, setAlbumQuery] = useState("");
   const [mobileQuery, setMobileQuery] = useState("");
-  const [showSearchSpinner, setShowSearchSpinner] = useState(false);
 
   // ─── UI state ────────────────────────────────────────────────────────────
   const [mobileSection, setMobileSection] = useState<"home" | "search" | "library" | "queue">("home");
@@ -238,21 +238,32 @@ export function AlbumBrowser({ baseUrl }: Props) {
 
   const pendingDesktopSearch = albumInput !== albumQuery;
   const pendingMobileSearch = mobileInput !== mobileQuery;
-  const hasPendingSearch = pendingDesktopSearch || pendingMobileSearch;
+  const showDesktopSearchSpinner = !!albumInput.trim() && (pendingDesktopSearch || desktopSearchFetching);
+  const showMobileSearchSpinner = !!mobileInput.trim() && (pendingMobileSearch || mobileSearchFetching);
 
-  // ─── Lazy-load songs when search is typed ────────────────────────────────
+  // ─── Backend search (mobile) ─────────────────────────────────────────────
   useEffect(() => {
-    if (!contentInput.trim() && !mobileInput.trim()) return;
-    if (songsLoaded) return;
-    fetchAllData()
+    if (!mobileQuery.trim()) { setBackendSearch(null); setMobileSearchFetching(false); return; }
+    setMobileSearchFetching(true);
+    fetchSearch(mobileQuery)
       .then(data => {
-        if (Array.isArray(data.songs) && data.songs.length > 0) {
-          setSongs(data.songs);
-          setSongsLoaded(true);
-        }
+        setBackendSearch({ query: mobileQuery, playlists: data.playlists, songs: data.songs });
+        setMobileSearchFetching(false);
       })
-      .catch(() => {});
-  }, [contentInput, mobileInput, songsLoaded]);
+      .catch(() => setMobileSearchFetching(false));
+  }, [mobileQuery]);
+
+  // ─── Backend search (desktop) ────────────────────────────────────────────
+  useEffect(() => {
+    if (!albumQuery.trim()) { setBackendSearch(null); setDesktopSearchFetching(false); return; }
+    setDesktopSearchFetching(true);
+    fetchSearch(albumQuery)
+      .then(data => {
+        setBackendSearch({ query: albumQuery, playlists: data.playlists, songs: data.songs });
+        setDesktopSearchFetching(false);
+      })
+      .catch(() => setDesktopSearchFetching(false));
+  }, [albumQuery]);
 
   // ─── URL ?filter= param ──────────────────────────────────────────────────
   useEffect(() => {
@@ -280,12 +291,6 @@ export function AlbumBrowser({ baseUrl }: Props) {
     return () => window.clearTimeout(id);
   }, [mobileInput]);
 
-  useEffect(() => {
-    if (!hasPendingSearch) { setShowSearchSpinner(false); return; }
-    const id = window.setTimeout(() => setShowSearchSpinner(true), 3000);
-    return () => window.clearTimeout(id);
-  }, [hasPendingSearch, albumInput, mobileInput]);
-
   // ─── Tokenized search terms ──────────────────────────────────────────────
   const desktopTokens = useMemo(
     () => normalizeForSearch(albumQuery).split(/\s+/).filter(Boolean),
@@ -310,34 +315,30 @@ export function AlbumBrowser({ baseUrl }: Props) {
     });
   }, [playlists, selectedCategory, categories]);
 
-  // ─── Desktop: albums filtered by text search (ALL tokens must match) ─────
+  // ─── Desktop: albums from backend search (fallback: local filter on loaded pages) ──
   const filteredAlbums = useMemo(() => {
     if (desktopTokens.length === 0) return categoryFilteredPlaylists;
-    return categoryFilteredPlaylists.filter(p => {
-      const haystack = normalizeForSearch(
-        p.title + ' ' + (p.artists || []).join(' ') + ' ' + (p.folderName || '')
-      );
-      return desktopTokens.every(t => haystack.includes(t));
+    const source = (backendSearch && backendSearch.query === albumQuery)
+      ? backendSearch.playlists as Playlist[]
+      : categoryFilteredPlaylists;
+    if (!selectedCategory) return source;
+    const cat = categories.find(c => c.id === selectedCategory);
+    if (!cat) return source;
+    return source.filter(p => {
+      const haystack = normalizeForSearch(p.title + ' ' + (p.artists || []).join(' ') + ' ' + (p.folderName || ''));
+      return albumMatchesCategory(haystack, cat);
     });
-  }, [categoryFilteredPlaylists, desktopTokens]);
+  }, [categoryFilteredPlaylists, desktopTokens, backendSearch, albumQuery, selectedCategory, categories]);
 
-  // ─── Desktop: songs filtered (ALL tokens must match) ─────────────────────
+  // ─── Desktop: songs from backend search results ───────────────────────────
   const filteredSongs = useMemo(() => {
-    if (desktopTokens.length === 0) return [];
+    if (desktopTokens.length === 0 || !backendSearch || backendSearch.query !== albumQuery) return [];
     const albumById = new Map<number, Playlist>();
-    playlists.forEach(p => albumById.set(p.albumId, p));
-    return songs
-      .filter(s => {
-        const album = albumById.get(s.albumId);
-        const authorsDiffer = album ? !sameArtists(s.artists || [], album.artists || []) : false;
-        const haystack = normalizeForSearch(
-          s.title + (authorsDiffer ? ' ' + (s.artists || []).join(' ') : '')
-        );
-        return desktopTokens.every(t => haystack.includes(t));
-      })
+    [...playlists, ...(backendSearch.playlists as Playlist[])].forEach(p => albumById.set(p.albumId, p));
+    return (backendSearch.songs as Song[])
       .map(s => ({ song: s, album: albumById.get(s.albumId) }))
       .filter((x): x is { song: Song; album: Playlist } => !!x.album);
-  }, [desktopTokens, songs, playlists]);
+  }, [desktopTokens, backendSearch, albumQuery, playlists]);
 
   // ─── Recent albums (category-filtered, for home view) ───────────────────
   const recentAlbumIdSet = useMemo(() => new Set(recentAlbums.map(r => r.albumId)), [recentAlbums]);
@@ -362,33 +363,26 @@ export function AlbumBrowser({ baseUrl }: Props) {
     [categoryFilteredPlaylists, recentAlbumIdSet]
   );
 
-  // ─── Mobile search: albums + songs (ALL tokens, no category filter in search) ──
+  // ─── Mobile search: albums from backend (fallback: local filter on loaded pages) ──
   const mobileSearchAlbums = useMemo(() => {
     if (mobileTokens.length === 0) return playlists.slice(0, 120);
+    if (backendSearch && backendSearch.query === mobileQuery) return backendSearch.playlists as Playlist[];
     return playlists.filter(p => {
       const haystack = normalizeForSearch(
         p.title + ' ' + (p.artists || []).join(' ') + ' ' + (p.folderName || '')
       );
       return mobileTokens.every(t => haystack.includes(t));
     });
-  }, [playlists, mobileTokens]);
+  }, [playlists, mobileTokens, backendSearch, mobileQuery]);
 
   const mobileSearchSongs = useMemo(() => {
-    if (mobileTokens.length === 0) return [];
+    if (mobileTokens.length === 0 || !backendSearch || backendSearch.query !== mobileQuery) return [];
     const byId = new Map<number, Playlist>();
-    playlists.forEach(p => byId.set(p.albumId, p));
-    return songs
-      .filter(s => {
-        const album = byId.get(s.albumId);
-        const authorsDiffer = album ? !sameArtists(s.artists || [], album.artists || []) : false;
-        const haystack = normalizeForSearch(
-          s.title + (authorsDiffer ? ' ' + (s.artists || []).join(' ') : '')
-        );
-        return mobileTokens.every(t => haystack.includes(t));
-      })
+    [...playlists, ...(backendSearch.playlists as Playlist[])].forEach(p => byId.set(p.albumId, p));
+    return (backendSearch.songs as Song[])
       .map(s => ({ song: s, album: byId.get(s.albumId) }))
       .filter((x): x is { song: Song; album: Playlist } => !!x.album);
-  }, [songs, playlists, mobileTokens]);
+  }, [backendSearch, mobileQuery, mobileTokens, playlists]);
 
   // ─── Cached audio files view ─────────────────────────────────────────────
   const cachedSongsForView: Song[] = useMemo(() => {
@@ -528,7 +522,8 @@ export function AlbumBrowser({ baseUrl }: Props) {
   }, []);
 
   useEffect(() => {
-    document.documentElement.style.fontSize = `${16 + fontScale}px`;
+    document.documentElement.style.fontSize = `${16 + fontScale * 2}px`;
+    document.documentElement.classList.toggle('font-scale-large', fontScale >= 2);
     localStorage.setItem('font-scale', String(fontScale));
   }, [fontScale]);
 
@@ -543,7 +538,7 @@ export function AlbumBrowser({ baseUrl }: Props) {
             fontScale === level ? 'text-green-400' : 'text-zinc-500 hover:text-zinc-300'
           }`}
           style={{ fontSize: `${10 + level * 2}px` }}
-          title={level === 0 ? 'Tamaño normal' : `+${level}px`}
+          title={level === 0 ? 'Tamaño normal' : `+${level * 2}px`}
         >
           A
         </button>
@@ -571,8 +566,8 @@ export function AlbumBrowser({ baseUrl }: Props) {
           }`}>
             {cat.icon}
           </div>
-          <span className={`text-[11px] font-medium whitespace-nowrap ${
-            selectedCategory === cat.id ? 'text-green-400' : 'text-zinc-400'
+          <span className={`text-[11px] font-semibold whitespace-nowrap ${
+            selectedCategory === cat.id ? 'text-green-300' : 'text-white'
           }`}>{cat.label}</span>
         </button>
       ))}
@@ -831,7 +826,7 @@ export function AlbumBrowser({ baseUrl }: Props) {
               value={mobileInput}
               onChange={(e) => setMobileInput(e.target.value)}
             />
-            {showSearchSpinner && pendingMobileSearch && (
+            {showMobileSearchSpinner && (
               <div className="mt-1 mb-2 flex items-center gap-2 text-xs text-zinc-400">
                 <div className="h-3 w-3 rounded-full border-2 border-zinc-600 border-t-green-500 animate-spin" />
                 Buscando...
@@ -857,6 +852,7 @@ export function AlbumBrowser({ baseUrl }: Props) {
                   <div className="min-w-0">
                     <div className="text-xs text-zinc-400">Álbum</div>
                     <div className="text-sm text-zinc-100 truncate">{playlist.title}</div>
+                    <div className="text-xs text-zinc-300 truncate">{playlist.artists.join(", ")}</div>
                   </div>
                 </a>
               ))}
@@ -885,6 +881,7 @@ export function AlbumBrowser({ baseUrl }: Props) {
                         <div className="min-w-0">
                           <div className="text-xs text-zinc-400">Audio</div>
                           <div className="text-sm text-zinc-100 truncate">{song.title}</div>
+                          <div className="text-xs text-zinc-300 truncate">{song.artists.join(", ")}</div>
                         </div>
                       </a>
                       <button
@@ -1058,7 +1055,7 @@ export function AlbumBrowser({ baseUrl }: Props) {
         </div>
       </div>
 
-      {showSearchSpinner && pendingDesktopSearch && (
+      {showDesktopSearchSpinner && (
         <div className="mb-3 flex items-center gap-2 text-xs text-zinc-400">
           <div className="h-3 w-3 rounded-full border-2 border-zinc-600 border-t-green-500 animate-spin" />
           Buscando...
@@ -1229,7 +1226,7 @@ export function AlbumBrowser({ baseUrl }: Props) {
                         <img src={song.image} alt={song.title} className="w-12 h-12 object-cover rounded" />
                         <div className="min-w-0">
                           <div className="text-sm text-zinc-100 truncate">{song.title}</div>
-                          <div className="text-xs text-zinc-400 truncate">{album.title}</div>
+                          <div className="text-xs text-zinc-400 truncate">{song.artists.join(", ")}</div>
                         </div>
                       </a>
                     ))}

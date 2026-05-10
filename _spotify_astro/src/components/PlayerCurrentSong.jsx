@@ -13,7 +13,7 @@ export const PlayerCurrentSong = ({image, title, artists, playlistPath}) => {
       ))
       }
       <div className="flex flex-col min-w-0">
-        <h3 className="font-semibold text-sm block truncate">
+        <h3 className="font-bold text-sm text-green-300 block truncate">
           {title}
         </h3>
         <span className="text-xs opacity-80 truncate">

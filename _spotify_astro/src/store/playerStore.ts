@@ -12,11 +12,15 @@ export interface PlayerStore {
   isPlaying: boolean;
   isTrackLoading: boolean;
   isMobilePlayerVisible: boolean;
+  shuffleMode: boolean;
+  repeatAllMode: boolean;
   currentMusic: CurrentMusic;
   volume: number;
   queue: Song[];
   setVolume: (volume: number) => void;
   setIsPlaying: (isPlaying: boolean) => void;
+  setShuffleMode: (enabled: boolean) => void;
+  setRepeatAllMode: (enabled: boolean) => void;
   setMobilePlayerVisible: (visible: boolean) => void;
   setCurrentMusic: (currentMusic: CurrentMusic) => void;
   setTrackLoading: (loading: boolean) => void;
@@ -33,11 +37,15 @@ export const usePlayerStore = create<PlayerStore>()(
       isPlaying: false,
       isTrackLoading: false,
       isMobilePlayerVisible: true,
+      shuffleMode: false,
+      repeatAllMode: false,
       currentMusic: { playlist: null, song: null, songs: [] },
       volume: 0.5,
       queue: [],
       setVolume: (volume) => set({ volume }),
       setIsPlaying: (isPlaying) => set({ isPlaying }),
+      setShuffleMode: (enabled) => set({ shuffleMode: enabled }),
+      setRepeatAllMode: (enabled) => set({ repeatAllMode: enabled }),
       setMobilePlayerVisible: (visible) => set({ isMobilePlayerVisible: visible }),
       setCurrentMusic: (currentMusic) => {set({currentMusic})},
       setTrackLoading: (loading) => set({ isTrackLoading: loading }),
