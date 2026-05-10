@@ -54,19 +54,36 @@ $COLORS = [
 // Songs are never cached to disk; they are built on demand per album or in a
 // single pass for the full-catalog endpoint, avoiding the json_decode OOM that
 // happened when reading a 25 MB file into a 128 MB PHP process.
-$CACHE_PLAYLISTS = sys_get_temp_dir() . '/audios_playlists_v5.json';
+$CACHE_PLAYLISTS = sys_get_temp_dir() . '/audios_playlists_v6.json';
 $CACHE_TTL = 1800;
 
-function countPlayableFiles(string $dir, array $exts): int {
+function extractYoutubeIdFromBaseName(string $baseName): ?string {
+    if (preg_match('/-([A-Za-z0-9_-]{11})$/', $baseName, $m)) return $m[1];
+    if (preg_match('/\[([A-Za-z0-9_-]{11})\]$/', $baseName, $m)) return $m[1];
+    return null;
+}
+
+function stripYoutubeIdSuffix(string $baseName): string {
+    $clean = preg_replace('/-([A-Za-z0-9_-]{11})$/', '', $baseName);
+    $clean = preg_replace('/\s*\[([A-Za-z0-9_-]{11})\]$/', '', (string)$clean);
+    $clean = trim((string)$clean);
+    return $clean !== '' ? $clean : $baseName;
+}
+
+function countPlayableFiles(string $dir, array $exts): array {
     $entries = @scandir($dir);
-    if (!$entries) return 0;
+    if (!$entries) return ['count' => 0, 'youtubeCount' => 0];
     $count = 0;
+    $youtubeCount = 0;
     foreach ($entries as $e) {
         if ($e === '.' || $e === '..') continue;
         $ext = '.' . strtolower(pathinfo($e, PATHINFO_EXTENSION));
-        if (in_array($ext, $exts) && is_file($dir . DIRECTORY_SEPARATOR . $e)) $count++;
+        if (!in_array($ext, $exts) || !is_file($dir . DIRECTORY_SEPARATOR . $e)) continue;
+        $count++;
+        $baseName = stripExt($e);
+        if (extractYoutubeIdFromBaseName($baseName) !== null) $youtubeCount++;
     }
-    return $count;
+    return ['count' => $count, 'youtubeCount' => $youtubeCount];
 }
 
 function findCover(string $albumPath, string $albumName, string $mediaBase, string $defaultCover, array $candidates): string {
@@ -122,10 +139,11 @@ function buildPlaylists(): array {
         if (in_array($entry, $IGNORE)) continue;
         $fullPath = $MEDIA_ROOT . DIRECTORY_SEPARATOR . $entry;
         if (!is_dir($fullPath)) continue;
-        $count = countPlayableFiles($fullPath, $AUDIO_EXTS);
+        $counts = countPlayableFiles($fullPath, $AUDIO_EXTS);
+        $count = (int)($counts['count'] ?? 0);
         if ($count === 0) continue;
         $albumDirs[] = $entry;
-        $countMap[$entry] = $count;
+        $countMap[$entry] = $counts;
     }
 
     if (class_exists('Collator')) {
@@ -153,7 +171,9 @@ function buildPlaylists(): array {
             'color'      => $color,
             'cover'      => $cover,
             'artists'    => [$parsed['author']],
-            'songCount'  => $countMap[$album] ?? 0,
+            'songCount'  => (int)($countMap[$album]['count'] ?? 0),
+            'youtubeCount' => (int)($countMap[$album]['youtubeCount'] ?? 0),
+            'hasYoutube' => ((int)($countMap[$album]['youtubeCount'] ?? 0) > 0),
         ];
     }
 
@@ -199,11 +219,15 @@ function buildSongsForAlbum(string $folderName, int $albumId, string $title, str
     $songs = [];
     foreach ($audioFiles as $i => $file) {
         $ext = '.' . strtolower(pathinfo($file, PATHINFO_EXTENSION));
+        $baseName = stripExt($file);
+        $youtubeId = extractYoutubeIdFromBaseName($baseName);
+        $cleanTitle = stripYoutubeIdSuffix($baseName);
         $songs[] = [
             'id'        => $i + 1,
             'albumId'   => $albumId,
-            'title'     => stripExt($file),
+            'title'     => $cleanTitle,
             'mediaType' => $ext === '.mp4' ? 'video' : 'audio',
+            'youtubeId' => $youtubeId,
             'image'     => $cover,
             'artists'   => [$author],
             'album'     => $title,

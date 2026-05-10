@@ -5,6 +5,7 @@ import {usePlayerStore} from "../store/playerStore";
 import { getPlayListInfoById } from "@/services/ApiService";
 import { useEffect, useMemo, useState } from "react";
 import { normalizeSongMediaType } from "@/lib/media";
+import { YoutubeIconButton, YoutubeVideoModal } from "@/components/YoutubeTools";
 
 interface Props {
   songs: Song[]
@@ -25,6 +26,7 @@ export const MusicsTable = ({songs}: Props) => {
   const setMobilePlayerVisible = usePlayerStore(state => state.setMobilePlayerVisible);
   const [durations, setDurations] = useState<Record<string, string>>({});
   const [cachedUrls, setCachedUrls] = useState<Set<string>>(new Set());
+  const [youtubeModalId, setYoutubeModalId] = useState<string | null>(null);
   const normalize = (value: string) =>
     value
       .toLowerCase()
@@ -166,6 +168,7 @@ export const MusicsTable = ({songs}: Props) => {
             >
               {queueSet.has(`${song.albumId}-${song.id}-${song.url}`) ? "✓" : "＋"}
             </button>
+            <YoutubeIconButton youtubeId={song.youtubeId} onOpen={setYoutubeModalId} />
           </div>
         )})}
       </div>
@@ -222,6 +225,7 @@ export const MusicsTable = ({songs}: Props) => {
                 <td className="px-4 py-2 rounded-tr-lg rounded-br-lg text-right">
                   <div className="flex items-center justify-end gap-3">
                     <span>{durations[song.url] ?? song.duration}</span>
+                    <YoutubeIconButton youtubeId={song.youtubeId} onOpen={setYoutubeModalId} />
                     <button
                       className="text-xs bg-zinc-800 hover:bg-zinc-700 rounded px-2 py-1"
                       onClick={(e) => {
@@ -252,6 +256,7 @@ export const MusicsTable = ({songs}: Props) => {
         animation: title-marquee 7s ease-in-out infinite alternate;
       }
     `}</style>
+    <YoutubeVideoModal youtubeId={youtubeModalId} onClose={() => setYoutubeModalId(null)} />
     </div>
   );
 }

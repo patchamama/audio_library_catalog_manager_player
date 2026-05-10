@@ -175,6 +175,22 @@ export function Player() {
   }, [isPlaying])
 
   useEffect(() => {
+    const onExternalPause = () => {
+      if (audioRef.current) audioRef.current.pause();
+      if (videoRef.current) videoRef.current.pause();
+      setIsPlaying(false);
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("player:pause", onExternalPause);
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("player:pause", onExternalPause);
+      }
+    };
+  }, [setIsPlaying]);
+
+  useEffect(() => {
     if (audioRef.current) audioRef.current.volume = volume;
     if (videoRef.current) videoRef.current.volume = volume;
     setPersistedState({ volume });

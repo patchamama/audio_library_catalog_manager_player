@@ -9,6 +9,8 @@ export interface Playlist {
   cover: string;
   artists: string[];
   songCount?: number;
+  youtubeCount?: number;
+  hasYoutube?: boolean;
 }
 
 export interface Song {
@@ -16,6 +18,7 @@ export interface Song {
   albumId: number;
   title: string;
   mediaType: "audio" | "video";
+  youtubeId?: string | null;
   image: string;
   artists: string[];
   album: string;

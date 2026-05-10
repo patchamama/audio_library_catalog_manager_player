@@ -5,6 +5,7 @@ import { normalizeSongMediaType } from "@/lib/media";
 import { fetchSearch, fetchPlaylists, getPlaylistsFromSwCache, getCachedAlbumInfo } from "@/services/ApiService";
 import { DEFAULT_CATEGORIES, type Category } from "@/lib/categories";
 import { probeConnectivity } from "@/components/OfflineBanner";
+import { YoutubeIconButton, YoutubeVideoModal } from "@/components/YoutubeTools";
 
 const CACHE_COVER = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><rect width="200" height="200" rx="12" fill="#0f172a"/><path d="M60 110 A32 32 0 0 1 88 76 A42 42 0 0 1 156 104 A26 26 0 0 1 150 152 L60 152 A32 32 0 0 1 60 110Z" fill="none" stroke="#22c55e" stroke-width="7" stroke-linejoin="round"/><line x1="100" y1="102" x2="100" y2="145" stroke="#4ade80" stroke-width="7" stroke-linecap="round"/><polyline points="83,132 100,150 117,132" fill="none" stroke="#4ade80" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/><line x1="80" y1="158" x2="120" y2="158" stroke="#4ade80" stroke-width="5" stroke-linecap="round"/></svg>')}`;
 
@@ -87,6 +88,10 @@ function CircleRing({ pct }: { pct: number }) {
 
 function albumMatchesCategory(haystack: string, cat: Category): boolean {
   return cat.terms.some(term => haystack.includes(normalizeForSearch(term)));
+}
+
+function isYoutubeCategory(cat: Category | undefined | null): boolean {
+  return !!cat && normalizeForSearch(cat.id) === "youtube";
 }
 
 export function AlbumBrowser({ baseUrl }: Props) {
@@ -191,6 +196,7 @@ export function AlbumBrowser({ baseUrl }: Props) {
   const [showCacheView, setShowCacheView] = useState(false);
   const [showHistoryView, setShowHistoryView] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [youtubeModalId, setYoutubeModalId] = useState<string | null>(null);
 
   // ─── Persisted / localStorage state ─────────────────────────────────────
   const [listenedAlbumIds, setListenedAlbumIds] = useState<Set<number>>(() => {
@@ -307,6 +313,7 @@ export function AlbumBrowser({ baseUrl }: Props) {
     if (!selectedCategory) return playlists;
     const cat = categories.find(c => c.id === selectedCategory);
     if (!cat) return playlists;
+    if (isYoutubeCategory(cat)) return playlists.filter(p => !!p.hasYoutube || (p.youtubeCount ?? 0) > 0);
     return playlists.filter(p => {
       const haystack = normalizeForSearch(
         p.title + ' ' + (p.artists || []).join(' ') + ' ' + (p.folderName || '')
@@ -324,6 +331,7 @@ export function AlbumBrowser({ baseUrl }: Props) {
     if (!selectedCategory) return source;
     const cat = categories.find(c => c.id === selectedCategory);
     if (!cat) return source;
+    if (isYoutubeCategory(cat)) return source.filter(p => !!p.hasYoutube || (p.youtubeCount ?? 0) > 0);
     return source.filter(p => {
       const haystack = normalizeForSearch(p.title + ' ' + (p.artists || []).join(' ') + ' ' + (p.folderName || ''));
       return albumMatchesCategory(haystack, cat);
@@ -335,10 +343,13 @@ export function AlbumBrowser({ baseUrl }: Props) {
     if (desktopTokens.length === 0 || !backendSearch || backendSearch.query !== albumQuery) return [];
     const albumById = new Map<number, Playlist>();
     [...playlists, ...(backendSearch.playlists as Playlist[])].forEach(p => albumById.set(p.albumId, p));
-    return (backendSearch.songs as Song[])
+    let songs = (backendSearch.songs as Song[]);
+    const cat = selectedCategory ? categories.find(c => c.id === selectedCategory) : null;
+    if (isYoutubeCategory(cat)) songs = songs.filter(s => !!s.youtubeId && s.youtubeId.length === 11);
+    return songs
       .map(s => ({ song: s, album: albumById.get(s.albumId) }))
       .filter((x): x is { song: Song; album: Playlist } => !!x.album);
-  }, [desktopTokens, backendSearch, albumQuery, playlists]);
+  }, [desktopTokens, backendSearch, albumQuery, playlists, selectedCategory, categories]);
 
   // ─── Recent albums (category-filtered, for home view) ───────────────────
   const recentAlbumIdSet = useMemo(() => new Set(recentAlbums.map(r => r.albumId)), [recentAlbums]);
@@ -348,6 +359,14 @@ export function AlbumBrowser({ baseUrl }: Props) {
     if (selectedCategory) {
       const cat = categories.find(c => c.id === selectedCategory);
       if (cat) {
+        if (isYoutubeCategory(cat)) {
+          const albumById = new Map(playlists.map(p => [p.albumId, p] as const));
+          list = list.filter(r => {
+            const album = albumById.get(r.albumId);
+            return !!album && (!!album.hasYoutube || (album.youtubeCount ?? 0) > 0);
+          });
+          return list.slice(0, 10);
+        }
         list = list.filter(r => {
           const haystack = normalizeForSearch(r.title + ' ' + r.artists.join(' '));
           return albumMatchesCategory(haystack, cat);
@@ -379,10 +398,13 @@ export function AlbumBrowser({ baseUrl }: Props) {
     if (mobileTokens.length === 0 || !backendSearch || backendSearch.query !== mobileQuery) return [];
     const byId = new Map<number, Playlist>();
     [...playlists, ...(backendSearch.playlists as Playlist[])].forEach(p => byId.set(p.albumId, p));
-    return (backendSearch.songs as Song[])
+    let songs = (backendSearch.songs as Song[]);
+    const cat = selectedCategory ? categories.find(c => c.id === selectedCategory) : null;
+    if (isYoutubeCategory(cat)) songs = songs.filter(s => !!s.youtubeId && s.youtubeId.length === 11);
+    return songs
       .map(s => ({ song: s, album: byId.get(s.albumId) }))
       .filter((x): x is { song: Song; album: Playlist } => !!x.album);
-  }, [backendSearch, mobileQuery, mobileTokens, playlists]);
+  }, [backendSearch, mobileQuery, mobileTokens, playlists, selectedCategory, categories]);
 
   // ─── Cached audio files view ─────────────────────────────────────────────
   const cachedSongsForView: Song[] = useMemo(() => {
@@ -399,14 +421,20 @@ export function AlbumBrowser({ baseUrl }: Props) {
       const segments = decoded.split('/').filter(Boolean);
       const filename = segments[segments.length - 1] ?? '';
       const folder = segments[segments.length - 2] ?? '';
-      const title = filename.replace(/\.(mp3|ogg|m4a|webm|mp4)$/i, '').trim() || filename;
+      const rawTitle = filename.replace(/\.(mp3|ogg|m4a|webm|mp4)$/i, '').trim() || filename;
+      const youtubeMatch = rawTitle.match(/-([A-Za-z0-9_-]{11})$/) || rawTitle.match(/\[([A-Za-z0-9_-]{11})\]$/);
+      const youtubeId = youtubeMatch?.[1] ?? null;
+      const title = rawTitle
+        .replace(/-([A-Za-z0-9_-]{11})$/, '')
+        .replace(/\s*\[([A-Za-z0-9_-]{11})\]$/, '')
+        .trim() || rawTitle;
       const dashIdx = folder.indexOf(' - ');
       const artist = dashIdx > 0 ? folder.slice(0, dashIdx).trim() : 'Desconocido';
       const albumTitle = dashIdx > 0 ? folder.slice(dashIdx + 3).trim() : folder;
       return {
         id: idx, albumId: 0, title,
         artists: [artist], album: albumTitle,
-        image: coverUrl ?? '', duration: '', url, mediaType: 'audio' as const,
+        image: coverUrl ?? '', duration: '', url, mediaType: 'audio' as const, youtubeId,
       } as Song;
     });
   }, [cachedAlbumInfo, currentMusic.songs]);
@@ -665,6 +693,7 @@ export function AlbumBrowser({ baseUrl }: Props) {
                           <div className={`text-sm truncate ${isCurrent ? 'text-green-400 font-medium' : 'text-zinc-100'}`}>{song.title}</div>
                           {song.artists.length > 0 && <div className="text-xs text-zinc-500 truncate">{song.artists.join(', ')}</div>}
                         </div>
+                        <YoutubeIconButton youtubeId={song.youtubeId} onOpen={setYoutubeModalId} />
                         {size && <span className="text-[10px] text-zinc-600 shrink-0">{fmtSize(size)}</span>}
                         {isCurrent && <span className="text-green-400 text-xs shrink-0">●</span>}
                       </button>
@@ -892,6 +921,7 @@ export function AlbumBrowser({ baseUrl }: Props) {
                       >
                         {queueSet.has(`${song.albumId}-${song.id}-${song.url}`) ? "✓" : "＋"}
                       </button>
+                      <YoutubeIconButton youtubeId={song.youtubeId} onOpen={setYoutubeModalId} />
                     </div>
                   ))}
                 </>
@@ -975,6 +1005,7 @@ export function AlbumBrowser({ baseUrl }: Props) {
                       <div className="text-sm text-zinc-100 truncate">{song.title}</div>
                       <div className="text-xs text-zinc-400 truncate">{song.artists.join(", ")}</div>
                     </div>
+                    <YoutubeIconButton youtubeId={song.youtubeId} onOpen={setYoutubeModalId} />
                     <button className="text-xs text-red-300 hover:text-red-200" onClick={() => removeFromQueue(index)} title="Quitar de cola">✕</button>
                   </div>
                 ))}
@@ -1004,6 +1035,7 @@ export function AlbumBrowser({ baseUrl }: Props) {
                         <div className={`text-sm truncate ${isCurrent ? 'text-green-400 font-medium' : 'text-zinc-100'}`}>{song.title}</div>
                         {song.artists.length > 0 && <div className="text-xs text-zinc-400 truncate">{song.artists.join(", ")}</div>}
                       </div>
+                      <YoutubeIconButton youtubeId={song.youtubeId} onOpen={setYoutubeModalId} />
                       {isCurrent && <span className="text-green-400 text-xs shrink-0">●</span>}
                     </button>
                   );
@@ -1012,6 +1044,7 @@ export function AlbumBrowser({ baseUrl }: Props) {
             )}
           </div>
         )}
+        <YoutubeVideoModal youtubeId={youtubeModalId} onClose={() => setYoutubeModalId(null)} />
       </section>
     );
   }
@@ -1156,6 +1189,7 @@ export function AlbumBrowser({ baseUrl }: Props) {
                         <div className={`text-sm truncate ${isCurrent ? 'text-green-400 font-medium' : 'text-zinc-100'}`}>{song.title}</div>
                         {song.artists.length > 0 && <div className="text-xs text-zinc-500 truncate">{song.artists.join(', ')}</div>}
                       </div>
+                      <YoutubeIconButton youtubeId={song.youtubeId} onOpen={setYoutubeModalId} />
                       {size && <span className="text-xs text-zinc-600 shrink-0">{fmtSize(size)}</span>}
                       {isCurrent && <span className="text-green-400 text-sm shrink-0">●</span>}
                     </button>
@@ -1218,10 +1252,10 @@ export function AlbumBrowser({ baseUrl }: Props) {
                   <h3 className="text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-3">Audios</h3>
                   <div className="grid gap-2">
                     {filteredSongs.map(({ song, album }) => (
+                      <div key={song.url} className="flex items-center gap-3 rounded-md bg-zinc-800/70 hover:bg-zinc-700 px-3 py-2">
                       <a
-                        key={song.url}
                         href={`${baseUrl}playlist/${album.id}/`}
-                        className="flex items-center gap-3 rounded-md bg-zinc-800/70 hover:bg-zinc-700 px-3 py-2"
+                        className="flex items-center gap-3 min-w-0 flex-1"
                       >
                         <img src={song.image} alt={song.title} className="w-12 h-12 object-cover rounded" />
                         <div className="min-w-0">
@@ -1229,6 +1263,8 @@ export function AlbumBrowser({ baseUrl }: Props) {
                           <div className="text-xs text-zinc-400 truncate">{song.artists.join(", ")}</div>
                         </div>
                       </a>
+                      <YoutubeIconButton youtubeId={song.youtubeId} onOpen={setYoutubeModalId} />
+                      </div>
                     ))}
                   </div>
                 </>
@@ -1351,6 +1387,7 @@ export function AlbumBrowser({ baseUrl }: Props) {
       <div ref={sentinelRef} className="py-4 text-center text-xs text-zinc-500">
         {loadingPage ? "Cargando más..." : moreToLoad ? "" : (!hasTextSearch ? "Fin de resultados" : "")}
       </div>
+      <YoutubeVideoModal youtubeId={youtubeModalId} onClose={() => setYoutubeModalId(null)} />
     </section>
   );
 }
